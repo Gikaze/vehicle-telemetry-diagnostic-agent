@@ -1,0 +1,37 @@
+name: Milestone task
+description: A unit of work in a milestone, covering one or more requirements.
+title: "Mx: "
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What this task delivers and why.
+    validations:
+      required: true
+  - type: input
+    id: requirements
+    attributes:
+      label: Requirements covered
+      description: IDs from docs/requirements.md.
+      placeholder: FR-01, NFR-15
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Copied from docs/requirements.md; each one gets at least one test.
+    validations:
+      required: true
+  - type: textarea
+    id: deliverables
+    attributes:
+      label: Deliverables
+      description: Checklist of files, tests and docs.
+      placeholder: "- [ ] ..."
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Constraints, open questions, links to ADRs or specs.
