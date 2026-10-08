@@ -1,0 +1,41 @@
+name: Bug report
+description: Something does not behave as specified.
+labels: [bug]
+body:
+  - type: textarea
+    id: observed
+    attributes:
+      label: What happened
+      description: Observed behaviour, with exact error messages.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What was expected
+      description: The expected behaviour, and the requirement ID if one applies.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Commands, configuration and seed (for simulator issues).
+      render: shell
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Environment
+      options:
+        - Development (LocalStack)
+        - Demo (real AWS)
+        - CI
+    validations:
+      required: true
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions
+      description: Output of `uv --version`, `terraform version`, `lstk status` as relevant. Never paste credentials.
