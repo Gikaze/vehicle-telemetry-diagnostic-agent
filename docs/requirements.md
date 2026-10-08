@@ -37,19 +37,28 @@ requirement → code → test traceability.
 | --- | --- | --- | --- | --- | --- |
 | NFR-01 | Cost | €0 AWS spend during development; each real demo under €5; monthly total under €35 | AWS budget alerts at €10/€20/€30; actual demo cost reported in COST.md | M7 | Planned |
 | NFR-02 | Cost | LLM API spend capped at €10 per provider | Spend limit configured in each provider console | M6 | Planned |
-| NFR-03 | Security | No secrets in the repository, history included | gitleaks in pre-commit and CI | M0 | Planned |
+| NFR-03 | Security | No secrets in the repository, history included | gitleaks in pre-commit and CI | M0 | Verified |
 | NFR-04 | Security | Least privilege: one IAM role per Lambda, scoped to its own resources | Checkov without critical findings; policies reviewed in the relevant ADR | M2 | Planned |
 | NFR-05 | Security | Distroless images, no critical CVE, running as non-root | hadolint + Trivy in CI | M1 | Planned |
 | NFR-06 | Reproducibility | From `git clone` to a running local stack in under 15 minutes | SETUP.md replayed on a clean environment before v1.0 | M7 | Planned |
-| NFR-07 | Reproducibility | All versions pinned (Python, dependencies, Terraform, providers, images) | `uv.lock`, `.terraform.lock.hcl`, explicit image tags | M0 | Planned |
+| NFR-07 | Reproducibility | All versions pinned (Python, dependencies, Terraform, providers, images) | `uv.lock`, `.terraform.lock.hcl`, explicit image tags | M0 | In progress |
 | NFR-08 | Quality | Test coverage ≥ 80 % on domain logic (simulator, anomaly rules, agent tools) | pytest-cov report in CI | M3 | Planned |
-| NFR-09 | Quality | Lint and formatting clean | ruff, `terraform fmt`, tflint in pre-commit and CI | M0 | Planned |
+| NFR-09 | Quality | Lint and formatting clean | ruff, `terraform fmt`, tflint in pre-commit and CI | M0 | Verified |
 | NFR-10 | Observability | Every agent request traced end to end (LLM calls, retrieval, tools) | Traces visible in Phoenix | M6 | Planned |
 | NFR-11 | Observability | Agent latency, throughput and error rate exposed as metrics | Grafana dashboard versioned in the repository | M6 | Planned |
 | NFR-12 | Performance | Agent latency measured at p50 and p95 on the 8 GB GPU; p95 target set after the M6 benchmark | Benchmark report in `docs/evaluation/` | M6 | Planned |
 | NFR-13 | Performance | Measurement visible in storage under 5 s after publication, locally | Timed integration test | M2 | Planned |
 | NFR-14 | Portability | LLM provider and model switched by configuration, without code changes | Benchmark run on at least 3 models with the same code | M6 | Planned |
 | NFR-15 | Fidelity | Simulated data is physically plausible and internally consistent (couplings between speed, wheel speeds, yaw rate, lateral acceleration, braking and temperatures) | Property-based invariant tests; 100 vehicles × 24 simulated hours yield zero anomalies; expert review of a simulated vehicle-day plot | M1 | Planned |
+
+## Status notes
+
+- **NFR-03:** gitleaks scans staged changes in pre-commit and the PR or push commit range in CI. The full-history
+  scan in CI (weekly schedule, manual run) only runs once `ci.yml` is on `main`; until then the criterion is
+  verified by a local full-history scan (`gitleaks git .`, no leaks).
+- **NFR-07:** pinned in M0: Python, dev dependencies (`uv.lock`), pre-commit hook revs, the tflint image, GitHub
+  Actions (commit SHAs) and CI tool versions. Remaining: `lstk` pulls `localstack/localstack-pro:latest` (to pin),
+  Docker images (M1), Terraform and providers (M2).
 
 ## Open questions
 

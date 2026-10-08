@@ -26,12 +26,15 @@ In Docker Desktop: **Settings → General → Use the WSL 2 based engine**, then
 
 ## 3. Tools inside WSL
 
+uv, pre-commit and Terraform are pinned (NFR-07). These versions must stay in sync with the `env` block of
+`.github/workflows/ci.yml`; change both together.
+
 ```bash
 # Base tools
 sudo apt update && sudo apt install -y curl unzip build-essential gh
 
 # uv (Python toolchain; project environments stay per repository)
-curl -LsSf https://astral.sh/uv/install.sh | sh
+curl -LsSf https://astral.sh/uv/0.12.23/install.sh | sh
 source $HOME/.local/bin/env
 
 # AWS CLI v2 (official installer; the Ubuntu apt package is outdated)
@@ -42,10 +45,11 @@ unzip -q awscliv2.zip && sudo ./aws/install && rm -rf aws awscliv2.zip && cd ~
 wget -qO- https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp.gpg
 echo "deb [signed-by=/usr/share/keyrings/hashicorp.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" \
   | sudo tee /etc/apt/sources.list.d/hashicorp.list
-sudo apt update && sudo apt install -y terraform
+sudo apt update && sudo apt install -y terraform=1.16.5-1
+sudo apt-mark hold terraform   # keep apt upgrade from moving it
 
 # pre-commit (isolated tool environment)
-uv tool install pre-commit
+uv tool install pre-commit==4.6.2
 ```
 
 ### LocalStack CLI (`lstk`)
@@ -90,6 +94,18 @@ lstk status
 ```
 
 Every path must start with `/usr` or `/home/<you>` — never `/mnt/c/...` (that is a Windows binary).
+
+## 6. Project setup
+
+```bash
+make setup      # uv sync + pre-commit install
+make lint       # all pre-commit hooks on every file
+make test       # unit tests with coverage
+```
+
+No linter needs a manual install: ruff comes from `uv.lock`, gitleaks and hadolint are installed by pre-commit,
+and tflint runs from a pinned container image. **Docker Desktop must be running to commit Terraform files**
+(the tflint hook); `terraform fmt` uses the local Terraform.
 
 ## Troubleshooting — issues actually met
 
