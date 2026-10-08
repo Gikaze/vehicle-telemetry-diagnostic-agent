@@ -7,7 +7,7 @@
 
 <!-- TODO(M7): 20-second demo GIF — an anomaly appears, a question is asked, a sourced answer comes back -->
 
-<!-- TODO(M0): CI badge once the workflow exists -->
+[![CI](https://github.com/Gikaze/vehicle-telemetry-diagnostic-agent/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Gikaze/vehicle-telemetry-diagnostic-agent/actions/workflows/ci.yml)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ## At a glance
@@ -49,7 +49,7 @@ The agent, its vector store and the LLM run on the edge — here, a developer la
 <!-- TODO(M2): verified three-command quick start -->
 
 ```bash
-git clone https://github.com/<user>/vehicle-telemetry-diagnostic-agent.git
+git clone https://github.com/Gikaze/vehicle-telemetry-diagnostic-agent.git
 cd vehicle-telemetry-diagnostic-agent
 make setup && make up
 ```
