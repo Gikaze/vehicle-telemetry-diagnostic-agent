@@ -5,10 +5,16 @@ description = "Fleet telemetry pipeline on AWS and a local RAG diagnostic agent 
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12,<3.13"
-dependencies = []
+dependencies = ["vtda-simulator"]
 
 [tool.uv]
 package = false
+
+[tool.uv.workspace]
+members = ["simulator"]
+
+[tool.uv.sources]
+vtda-simulator = { workspace = true }
 
 [tool.ruff]
 target-version = "py312"
@@ -31,6 +37,9 @@ show_missing = true
 
 [dependency-groups]
 dev = [
+    "hypothesis>=6.168.5",
+    "jsonschema>=4.26.0",
+    "matplotlib>=3.11.2",
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
     "ruff>=0.16.10",
