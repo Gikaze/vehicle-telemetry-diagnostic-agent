@@ -53,12 +53,14 @@ requirement → code → test traceability.
 
 ## Status notes
 
-- **NFR-03:** gitleaks scans staged changes in pre-commit and the PR or push commit range in CI. The full-history
-  scan in CI (weekly schedule, manual run) only runs once `ci.yml` is on `main`; until then the criterion is
-  verified by a local full-history scan (`gitleaks git .`, no leaks).
+- **NFR-03:** gitleaks scans staged changes in pre-commit and the PR or push commit range in CI, and the full
+  history on the weekly schedule and on manual runs. First full-history scan in CI: 2026-10-08, run
+  [37809150845](https://github.com/Gikaze/vehicle-telemetry-diagnostic-agent/actions/runs/37809150845)
+  (manual run: 2 commits scanned, the whole history at the time; no leaks found).
 - **NFR-07:** pinned in M0: Python, dev dependencies (`uv.lock`), pre-commit hook revs, the tflint image, GitHub
-  Actions (commit SHAs) and CI tool versions. Remaining: `lstk` pulls `localstack/localstack-pro:latest` (to pin),
-  Docker images (M1), Terraform and providers (M2).
+  Actions (commit SHAs) and CI tool versions. Pinned in M1: the LocalStack image used by `make up`
+  (`localstack/localstack-pro:2026.9.1`) and the `lstk` CLI (1.3.0, release checksum verified in
+  `docs/SETUP.md`). Remaining: the simulator image (M1), Terraform and providers (M2).
 
 ## Open questions
 

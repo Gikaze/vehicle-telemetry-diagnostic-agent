@@ -39,6 +39,17 @@ def test_dependencies_are_locked() -> None:
     assert {"ruff", "pytest", "pytest-cov"} <= locked
 
 
+def test_localstack_image_is_pinned() -> None:
+    """NFR-07: make up starts LocalStack from an explicitly tagged image, never `latest`."""
+    makefile = (ROOT / "Makefile").read_text()
+    match = re.search(r"^LOCALSTACK_IMAGE := (\S+)$", makefile, re.MULTILINE)
+    assert match, "LOCALSTACK_IMAGE is not defined in the Makefile"
+    repository, _, tag = match.group(1).rpartition(":")
+    assert repository == "localstack/localstack-pro"
+    assert tag and tag != "latest"
+    assert "--image $(LOCALSTACK_IMAGE)" in makefile
+
+
 @pytest.mark.parametrize(
     "path",
     [
