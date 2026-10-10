@@ -1,0 +1,1454 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Nordwind van telemetry message",
+  "description": "Generated from simulator/catalogue.yaml by `make schema`; do not edit by hand.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/periodic_message"
+    }
+  ],
+  "$defs": {
+    "value.wheel_speed_fl": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 250
+        },
+        {
+          "const": 655.35
+        }
+      ],
+      "x-unit": "km/h",
+      "x-resolution": 0.01,
+      "x-offset": 0
+    },
+    "stats.wheel_speed_fl": {
+      "type": "object",
+      "properties": {
+        "mean": {
+          "$ref": "#/$defs/value.wheel_speed_fl"
+        },
+        "min": {
+          "$ref": "#/$defs/value.wheel_speed_fl"
+        },
+        "max": {
+          "$ref": "#/$defs/value.wheel_speed_fl"
+        },
+        "last": {
+          "$ref": "#/$defs/value.wheel_speed_fl"
+        }
+      },
+      "required": [
+        "mean",
+        "min",
+        "max",
+        "last"
+      ],
+      "additionalProperties": false
+    },
+    "value.wheel_speed_fr": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 250
+        },
+        {
+          "const": 655.35
+        }
+      ],
+      "x-unit": "km/h",
+      "x-resolution": 0.01,
+      "x-offset": 0
+    },
+    "stats.wheel_speed_fr": {
+      "type": "object",
+      "properties": {
+        "mean": {
+          "$ref": "#/$defs/value.wheel_speed_fr"
+        },
+        "min": {
+          "$ref": "#/$defs/value.wheel_speed_fr"
+        },
+        "max": {
+          "$ref": "#/$defs/value.wheel_speed_fr"
+        },
+        "last": {
+          "$ref": "#/$defs/value.wheel_speed_fr"
+        }
+      },
+      "required": [
+        "mean",
+        "min",
+        "max",
+        "last"
+      ],
+      "additionalProperties": false
+    },
+    "value.wheel_speed_rl": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 250
+        },
+        {
+          "const": 655.35
+        }
+      ],
+      "x-unit": "km/h",
+      "x-resolution": 0.01,
+      "x-offset": 0
+    },
+    "stats.wheel_speed_rl": {
+      "type": "object",
+      "properties": {
+        "mean": {
+          "$ref": "#/$defs/value.wheel_speed_rl"
+        },
+        "min": {
+          "$ref": "#/$defs/value.wheel_speed_rl"
+        },
+        "max": {
+          "$ref": "#/$defs/value.wheel_speed_rl"
+        },
+        "last": {
+          "$ref": "#/$defs/value.wheel_speed_rl"
+        }
+      },
+      "required": [
+        "mean",
+        "min",
+        "max",
+        "last"
+      ],
+      "additionalProperties": false
+    },
+    "value.wheel_speed_rr": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 250
+        },
+        {
+          "const": 655.35
+        }
+      ],
+      "x-unit": "km/h",
+      "x-resolution": 0.01,
+      "x-offset": 0
+    },
+    "stats.wheel_speed_rr": {
+      "type": "object",
+      "properties": {
+        "mean": {
+          "$ref": "#/$defs/value.wheel_speed_rr"
+        },
+        "min": {
+          "$ref": "#/$defs/value.wheel_speed_rr"
+        },
+        "max": {
+          "$ref": "#/$defs/value.wheel_speed_rr"
+        },
+        "last": {
+          "$ref": "#/$defs/value.wheel_speed_rr"
+        }
+      },
+      "required": [
+        "mean",
+        "min",
+        "max",
+        "last"
+      ],
+      "additionalProperties": false
+    },
+    "value.vehicle_ref_speed": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 250
+        },
+        {
+          "const": 655.35
+        }
+      ],
+      "x-unit": "km/h",
+      "x-resolution": 0.01,
+      "x-offset": 0
+    },
+    "stats.vehicle_ref_speed": {
+      "type": "object",
+      "properties": {
+        "mean": {
+          "$ref": "#/$defs/value.vehicle_ref_speed"
+        },
+        "min": {
+          "$ref": "#/$defs/value.vehicle_ref_speed"
+        },
+        "max": {
+          "$ref": "#/$defs/value.vehicle_ref_speed"
+        },
+        "last": {
+          "$ref": "#/$defs/value.vehicle_ref_speed"
+        }
+      },
+      "required": [
+        "mean",
+        "min",
+        "max",
+        "last"
+      ],
+      "additionalProperties": false
+    },
+    "value.master_cyl_pressure": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 250
+        },
+        {
+          "const": 409.5
+        }
+      ],
+      "x-unit": "bar",
+      "x-resolution": 0.1,
+      "x-offset": 0
+    },
+    "stats.master_cyl_pressure": {
+      "type": "object",
+      "properties": {
+        "mean": {
+          "$ref": "#/$defs/value.master_cyl_pressure"
+        },
+        "min": {
+          "$ref": "#/$defs/value.master_cyl_pressure"
+        },
+        "max": {
+          "$ref": "#/$defs/value.master_cyl_pressure"
+        },
+        "last": {
+          "$ref": "#/$defs/value.master_cyl_pressure"
+        }
+      },
+      "required": [
+        "mean",
+        "min",
+        "max",
+        "last"
+      ],
+      "additionalProperties": false
+    },
+    "value.brake_disc_temp_est_fl": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": -40,
+          "maximum": 900
+        },
+        {
+          "const": 983
+        }
+      ],
+      "x-unit": "degC",
+      "x-resolution": 1,
+      "x-offset": -40
+    },
+    "stats.brake_disc_temp_est_fl": {
+      "type": "object",
+      "properties": {
+        "mean": {
+          "$ref": "#/$defs/value.brake_disc_temp_est_fl"
+        },
+        "min": {
+          "$ref": "#/$defs/value.brake_disc_temp_est_fl"
+        },
+        "max": {
+          "$ref": "#/$defs/value.brake_disc_temp_est_fl"
+        },
+        "last": {
+          "$ref": "#/$defs/value.brake_disc_temp_est_fl"
+        }
+      },
+      "required": [
+        "mean",
+        "min",
+        "max",
+        "last"
+      ],
+      "additionalProperties": false
+    },
+    "value.brake_disc_temp_est_fr": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": -40,
+          "maximum": 900
+        },
+        {
+          "const": 983
+        }
+      ],
+      "x-unit": "degC",
+      "x-resolution": 1,
+      "x-offset": -40
+    },
+    "stats.brake_disc_temp_est_fr": {
+      "type": "object",
+      "properties": {
+        "mean": {
+          "$ref": "#/$defs/value.brake_disc_temp_est_fr"
+        },
+        "min": {
+          "$ref": "#/$defs/value.brake_disc_temp_est_fr"
+        },
+        "max": {
+          "$ref": "#/$defs/value.brake_disc_temp_est_fr"
+        },
+        "last": {
+          "$ref": "#/$defs/value.brake_disc_temp_est_fr"
+        }
+      },
+      "required": [
+        "mean",
+        "min",
+        "max",
+        "last"
+      ],
+      "additionalProperties": false
+    },
+    "value.brake_disc_temp_est_rl": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": -40,
+          "maximum": 900
+        },
+        {
+          "const": 983
+        }
+      ],
+      "x-unit": "degC",
+      "x-resolution": 1,
+      "x-offset": -40
+    },
+    "stats.brake_disc_temp_est_rl": {
+      "type": "object",
+      "properties": {
+        "mean": {
+          "$ref": "#/$defs/value.brake_disc_temp_est_rl"
+        },
+        "min": {
+          "$ref": "#/$defs/value.brake_disc_temp_est_rl"
+        },
+        "max": {
+          "$ref": "#/$defs/value.brake_disc_temp_est_rl"
+        },
+        "last": {
+          "$ref": "#/$defs/value.brake_disc_temp_est_rl"
+        }
+      },
+      "required": [
+        "mean",
+        "min",
+        "max",
+        "last"
+      ],
+      "additionalProperties": false
+    },
+    "value.brake_disc_temp_est_rr": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": -40,
+          "maximum": 900
+        },
+        {
+          "const": 983
+        }
+      ],
+      "x-unit": "degC",
+      "x-resolution": 1,
+      "x-offset": -40
+    },
+    "stats.brake_disc_temp_est_rr": {
+      "type": "object",
+      "properties": {
+        "mean": {
+          "$ref": "#/$defs/value.brake_disc_temp_est_rr"
+        },
+        "min": {
+          "$ref": "#/$defs/value.brake_disc_temp_est_rr"
+        },
+        "max": {
+          "$ref": "#/$defs/value.brake_disc_temp_est_rr"
+        },
+        "last": {
+          "$ref": "#/$defs/value.brake_disc_temp_est_rr"
+        }
+      },
+      "required": [
+        "mean",
+        "min",
+        "max",
+        "last"
+      ],
+      "additionalProperties": false
+    },
+    "value.accel_long": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": -15,
+          "maximum": 15
+        },
+        {
+          "const": 327.67
+        }
+      ],
+      "x-unit": "m/s2",
+      "x-resolution": 0.01,
+      "x-offset": -327.68,
+      "description": "Longitudinal acceleration along the vehicle x axis; positive forward, negative when braking."
+    },
+    "stats.accel_long": {
+      "type": "object",
+      "properties": {
+        "mean": {
+          "$ref": "#/$defs/value.accel_long"
+        },
+        "min": {
+          "$ref": "#/$defs/value.accel_long"
+        },
+        "max": {
+          "$ref": "#/$defs/value.accel_long"
+        },
+        "last": {
+          "$ref": "#/$defs/value.accel_long"
+        }
+      },
+      "required": [
+        "mean",
+        "min",
+        "max",
+        "last"
+      ],
+      "additionalProperties": false
+    },
+    "value.accel_lat": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": -15,
+          "maximum": 15
+        },
+        {
+          "const": 327.67
+        }
+      ],
+      "x-unit": "m/s2",
+      "x-resolution": 0.01,
+      "x-offset": -327.68,
+      "description": "Lateral acceleration along the vehicle y axis; positive to the left."
+    },
+    "stats.accel_lat": {
+      "type": "object",
+      "properties": {
+        "mean": {
+          "$ref": "#/$defs/value.accel_lat"
+        },
+        "min": {
+          "$ref": "#/$defs/value.accel_lat"
+        },
+        "max": {
+          "$ref": "#/$defs/value.accel_lat"
+        },
+        "last": {
+          "$ref": "#/$defs/value.accel_lat"
+        }
+      },
+      "required": [
+        "mean",
+        "min",
+        "max",
+        "last"
+      ],
+      "additionalProperties": false
+    },
+    "value.yaw_rate": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": -120,
+          "maximum": 120
+        },
+        {
+          "const": 327.67
+        }
+      ],
+      "x-unit": "deg/s",
+      "x-resolution": 0.01,
+      "x-offset": -327.68,
+      "description": "Rotation rate about the vehicle z axis; positive counter-clockwise seen from above (left turn)."
+    },
+    "stats.yaw_rate": {
+      "type": "object",
+      "properties": {
+        "mean": {
+          "$ref": "#/$defs/value.yaw_rate"
+        },
+        "min": {
+          "$ref": "#/$defs/value.yaw_rate"
+        },
+        "max": {
+          "$ref": "#/$defs/value.yaw_rate"
+        },
+        "last": {
+          "$ref": "#/$defs/value.yaw_rate"
+        }
+      },
+      "required": [
+        "mean",
+        "min",
+        "max",
+        "last"
+      ],
+      "additionalProperties": false
+    },
+    "value.steering_wheel_angle": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": -780,
+          "maximum": 780
+        },
+        {
+          "const": 3276.7
+        }
+      ],
+      "x-unit": "deg",
+      "x-resolution": 0.1,
+      "x-offset": -3276.8,
+      "description": "Steering-wheel angle from the straight-ahead position; positive to the left (left turn)."
+    },
+    "stats.steering_wheel_angle": {
+      "type": "object",
+      "properties": {
+        "mean": {
+          "$ref": "#/$defs/value.steering_wheel_angle"
+        },
+        "min": {
+          "$ref": "#/$defs/value.steering_wheel_angle"
+        },
+        "max": {
+          "$ref": "#/$defs/value.steering_wheel_angle"
+        },
+        "last": {
+          "$ref": "#/$defs/value.steering_wheel_angle"
+        }
+      },
+      "required": [
+        "mean",
+        "min",
+        "max",
+        "last"
+      ],
+      "additionalProperties": false
+    },
+    "value.steering_wheel_rate": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": -1500,
+          "maximum": 1500
+        },
+        {
+          "const": 2047
+        }
+      ],
+      "x-unit": "deg/s",
+      "x-resolution": 1,
+      "x-offset": -2048,
+      "description": "Time derivative of steering_wheel_angle; positive while the angle increases (wheel turning towards the left)."
+    },
+    "stats.steering_wheel_rate": {
+      "type": "object",
+      "properties": {
+        "mean": {
+          "$ref": "#/$defs/value.steering_wheel_rate"
+        },
+        "min": {
+          "$ref": "#/$defs/value.steering_wheel_rate"
+        },
+        "max": {
+          "$ref": "#/$defs/value.steering_wheel_rate"
+        },
+        "last": {
+          "$ref": "#/$defs/value.steering_wheel_rate"
+        }
+      },
+      "required": [
+        "mean",
+        "min",
+        "max",
+        "last"
+      ],
+      "additionalProperties": false
+    },
+    "value.driver_torque": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": -12,
+          "maximum": 12
+        },
+        {
+          "const": 327.67
+        }
+      ],
+      "x-unit": "Nm",
+      "x-resolution": 0.01,
+      "x-offset": -327.68,
+      "description": "Torque applied by the driver on the steering wheel; positive to the left, same sign as steering_wheel_angle."
+    },
+    "stats.driver_torque": {
+      "type": "object",
+      "properties": {
+        "mean": {
+          "$ref": "#/$defs/value.driver_torque"
+        },
+        "min": {
+          "$ref": "#/$defs/value.driver_torque"
+        },
+        "max": {
+          "$ref": "#/$defs/value.driver_torque"
+        },
+        "last": {
+          "$ref": "#/$defs/value.driver_torque"
+        }
+      },
+      "required": [
+        "mean",
+        "min",
+        "max",
+        "last"
+      ],
+      "additionalProperties": false
+    },
+    "value.eps_assist_torque": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": -80,
+          "maximum": 80
+        },
+        {
+          "const": 204.7
+        }
+      ],
+      "x-unit": "Nm",
+      "x-resolution": 0.1,
+      "x-offset": -204.8,
+      "description": "Column-type EPS; assist torque at the steering column, positive to the left, same sign as driver_torque."
+    },
+    "stats.eps_assist_torque": {
+      "type": "object",
+      "properties": {
+        "mean": {
+          "$ref": "#/$defs/value.eps_assist_torque"
+        },
+        "min": {
+          "$ref": "#/$defs/value.eps_assist_torque"
+        },
+        "max": {
+          "$ref": "#/$defs/value.eps_assist_torque"
+        },
+        "last": {
+          "$ref": "#/$defs/value.eps_assist_torque"
+        }
+      },
+      "required": [
+        "mean",
+        "min",
+        "max",
+        "last"
+      ],
+      "additionalProperties": false
+    },
+    "value.eps_temperature": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": -40,
+          "maximum": 150
+        },
+        {
+          "const": 215
+        }
+      ],
+      "x-unit": "degC",
+      "x-resolution": 1,
+      "x-offset": -40
+    },
+    "stats.eps_temperature": {
+      "type": "object",
+      "properties": {
+        "mean": {
+          "$ref": "#/$defs/value.eps_temperature"
+        },
+        "min": {
+          "$ref": "#/$defs/value.eps_temperature"
+        },
+        "max": {
+          "$ref": "#/$defs/value.eps_temperature"
+        },
+        "last": {
+          "$ref": "#/$defs/value.eps_temperature"
+        }
+      },
+      "required": [
+        "mean",
+        "min",
+        "max",
+        "last"
+      ],
+      "additionalProperties": false
+    },
+    "value.tyre_pressure_fl": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 8
+        },
+        {
+          "const": 10.23
+        }
+      ],
+      "x-unit": "bar",
+      "x-resolution": 0.01,
+      "x-offset": 0
+    },
+    "stats.tyre_pressure_fl": {
+      "type": "object",
+      "properties": {
+        "mean": {
+          "$ref": "#/$defs/value.tyre_pressure_fl"
+        },
+        "min": {
+          "$ref": "#/$defs/value.tyre_pressure_fl"
+        },
+        "max": {
+          "$ref": "#/$defs/value.tyre_pressure_fl"
+        },
+        "last": {
+          "$ref": "#/$defs/value.tyre_pressure_fl"
+        }
+      },
+      "required": [
+        "mean",
+        "min",
+        "max",
+        "last"
+      ],
+      "additionalProperties": false
+    },
+    "value.tyre_pressure_fr": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 8
+        },
+        {
+          "const": 10.23
+        }
+      ],
+      "x-unit": "bar",
+      "x-resolution": 0.01,
+      "x-offset": 0
+    },
+    "stats.tyre_pressure_fr": {
+      "type": "object",
+      "properties": {
+        "mean": {
+          "$ref": "#/$defs/value.tyre_pressure_fr"
+        },
+        "min": {
+          "$ref": "#/$defs/value.tyre_pressure_fr"
+        },
+        "max": {
+          "$ref": "#/$defs/value.tyre_pressure_fr"
+        },
+        "last": {
+          "$ref": "#/$defs/value.tyre_pressure_fr"
+        }
+      },
+      "required": [
+        "mean",
+        "min",
+        "max",
+        "last"
+      ],
+      "additionalProperties": false
+    },
+    "value.tyre_pressure_rl": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 8
+        },
+        {
+          "const": 10.23
+        }
+      ],
+      "x-unit": "bar",
+      "x-resolution": 0.01,
+      "x-offset": 0
+    },
+    "stats.tyre_pressure_rl": {
+      "type": "object",
+      "properties": {
+        "mean": {
+          "$ref": "#/$defs/value.tyre_pressure_rl"
+        },
+        "min": {
+          "$ref": "#/$defs/value.tyre_pressure_rl"
+        },
+        "max": {
+          "$ref": "#/$defs/value.tyre_pressure_rl"
+        },
+        "last": {
+          "$ref": "#/$defs/value.tyre_pressure_rl"
+        }
+      },
+      "required": [
+        "mean",
+        "min",
+        "max",
+        "last"
+      ],
+      "additionalProperties": false
+    },
+    "value.tyre_pressure_rr": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 8
+        },
+        {
+          "const": 10.23
+        }
+      ],
+      "x-unit": "bar",
+      "x-resolution": 0.01,
+      "x-offset": 0
+    },
+    "stats.tyre_pressure_rr": {
+      "type": "object",
+      "properties": {
+        "mean": {
+          "$ref": "#/$defs/value.tyre_pressure_rr"
+        },
+        "min": {
+          "$ref": "#/$defs/value.tyre_pressure_rr"
+        },
+        "max": {
+          "$ref": "#/$defs/value.tyre_pressure_rr"
+        },
+        "last": {
+          "$ref": "#/$defs/value.tyre_pressure_rr"
+        }
+      },
+      "required": [
+        "mean",
+        "min",
+        "max",
+        "last"
+      ],
+      "additionalProperties": false
+    },
+    "value.tyre_temp_fl": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": -40,
+          "maximum": 120
+        },
+        {
+          "const": 215
+        }
+      ],
+      "x-unit": "degC",
+      "x-resolution": 1,
+      "x-offset": -40
+    },
+    "stats.tyre_temp_fl": {
+      "type": "object",
+      "properties": {
+        "mean": {
+          "$ref": "#/$defs/value.tyre_temp_fl"
+        },
+        "min": {
+          "$ref": "#/$defs/value.tyre_temp_fl"
+        },
+        "max": {
+          "$ref": "#/$defs/value.tyre_temp_fl"
+        },
+        "last": {
+          "$ref": "#/$defs/value.tyre_temp_fl"
+        }
+      },
+      "required": [
+        "mean",
+        "min",
+        "max",
+        "last"
+      ],
+      "additionalProperties": false
+    },
+    "value.tyre_temp_fr": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": -40,
+          "maximum": 120
+        },
+        {
+          "const": 215
+        }
+      ],
+      "x-unit": "degC",
+      "x-resolution": 1,
+      "x-offset": -40
+    },
+    "stats.tyre_temp_fr": {
+      "type": "object",
+      "properties": {
+        "mean": {
+          "$ref": "#/$defs/value.tyre_temp_fr"
+        },
+        "min": {
+          "$ref": "#/$defs/value.tyre_temp_fr"
+        },
+        "max": {
+          "$ref": "#/$defs/value.tyre_temp_fr"
+        },
+        "last": {
+          "$ref": "#/$defs/value.tyre_temp_fr"
+        }
+      },
+      "required": [
+        "mean",
+        "min",
+        "max",
+        "last"
+      ],
+      "additionalProperties": false
+    },
+    "value.tyre_temp_rl": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": -40,
+          "maximum": 120
+        },
+        {
+          "const": 215
+        }
+      ],
+      "x-unit": "degC",
+      "x-resolution": 1,
+      "x-offset": -40
+    },
+    "stats.tyre_temp_rl": {
+      "type": "object",
+      "properties": {
+        "mean": {
+          "$ref": "#/$defs/value.tyre_temp_rl"
+        },
+        "min": {
+          "$ref": "#/$defs/value.tyre_temp_rl"
+        },
+        "max": {
+          "$ref": "#/$defs/value.tyre_temp_rl"
+        },
+        "last": {
+          "$ref": "#/$defs/value.tyre_temp_rl"
+        }
+      },
+      "required": [
+        "mean",
+        "min",
+        "max",
+        "last"
+      ],
+      "additionalProperties": false
+    },
+    "value.tyre_temp_rr": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": -40,
+          "maximum": 120
+        },
+        {
+          "const": 215
+        }
+      ],
+      "x-unit": "degC",
+      "x-resolution": 1,
+      "x-offset": -40
+    },
+    "stats.tyre_temp_rr": {
+      "type": "object",
+      "properties": {
+        "mean": {
+          "$ref": "#/$defs/value.tyre_temp_rr"
+        },
+        "min": {
+          "$ref": "#/$defs/value.tyre_temp_rr"
+        },
+        "max": {
+          "$ref": "#/$defs/value.tyre_temp_rr"
+        },
+        "last": {
+          "$ref": "#/$defs/value.tyre_temp_rr"
+        }
+      },
+      "required": [
+        "mean",
+        "min",
+        "max",
+        "last"
+      ],
+      "additionalProperties": false
+    },
+    "value.engine_speed": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 6000
+        },
+        {
+          "const": 16383
+        }
+      ],
+      "x-unit": "rpm",
+      "x-resolution": 1,
+      "x-offset": 0
+    },
+    "stats.engine_speed": {
+      "type": "object",
+      "properties": {
+        "mean": {
+          "$ref": "#/$defs/value.engine_speed"
+        },
+        "min": {
+          "$ref": "#/$defs/value.engine_speed"
+        },
+        "max": {
+          "$ref": "#/$defs/value.engine_speed"
+        },
+        "last": {
+          "$ref": "#/$defs/value.engine_speed"
+        }
+      },
+      "required": [
+        "mean",
+        "min",
+        "max",
+        "last"
+      ],
+      "additionalProperties": false
+    },
+    "value.coolant_temp": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": -40,
+          "maximum": 215
+        },
+        {
+          "const": 983
+        }
+      ],
+      "x-unit": "degC",
+      "x-resolution": 1,
+      "x-offset": -40,
+      "description": "Range as in OBD-II PID 0x05 (engine coolant temperature)."
+    },
+    "stats.coolant_temp": {
+      "type": "object",
+      "properties": {
+        "mean": {
+          "$ref": "#/$defs/value.coolant_temp"
+        },
+        "min": {
+          "$ref": "#/$defs/value.coolant_temp"
+        },
+        "max": {
+          "$ref": "#/$defs/value.coolant_temp"
+        },
+        "last": {
+          "$ref": "#/$defs/value.coolant_temp"
+        }
+      },
+      "required": [
+        "mean",
+        "min",
+        "max",
+        "last"
+      ],
+      "additionalProperties": false
+    },
+    "value.accel_pedal_position": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "const": 102.3
+        }
+      ],
+      "x-unit": "%",
+      "x-resolution": 0.1,
+      "x-offset": 0
+    },
+    "stats.accel_pedal_position": {
+      "type": "object",
+      "properties": {
+        "mean": {
+          "$ref": "#/$defs/value.accel_pedal_position"
+        },
+        "min": {
+          "$ref": "#/$defs/value.accel_pedal_position"
+        },
+        "max": {
+          "$ref": "#/$defs/value.accel_pedal_position"
+        },
+        "last": {
+          "$ref": "#/$defs/value.accel_pedal_position"
+        }
+      },
+      "required": [
+        "mean",
+        "min",
+        "max",
+        "last"
+      ],
+      "additionalProperties": false
+    },
+    "value.odometer": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 999999
+        },
+        {
+          "const": 1677721.5
+        }
+      ],
+      "x-unit": "km",
+      "x-resolution": 0.1,
+      "x-offset": 0
+    },
+    "stats.odometer": {
+      "type": "object",
+      "properties": {
+        "mean": {
+          "$ref": "#/$defs/value.odometer"
+        },
+        "min": {
+          "$ref": "#/$defs/value.odometer"
+        },
+        "max": {
+          "$ref": "#/$defs/value.odometer"
+        },
+        "last": {
+          "$ref": "#/$defs/value.odometer"
+        }
+      },
+      "required": [
+        "mean",
+        "min",
+        "max",
+        "last"
+      ],
+      "additionalProperties": false
+    },
+    "value.ambient_temp": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": -40,
+          "maximum": 60
+        },
+        {
+          "const": 87.5
+        }
+      ],
+      "x-unit": "degC",
+      "x-resolution": 0.5,
+      "x-offset": -40
+    },
+    "stats.ambient_temp": {
+      "type": "object",
+      "properties": {
+        "mean": {
+          "$ref": "#/$defs/value.ambient_temp"
+        },
+        "min": {
+          "$ref": "#/$defs/value.ambient_temp"
+        },
+        "max": {
+          "$ref": "#/$defs/value.ambient_temp"
+        },
+        "last": {
+          "$ref": "#/$defs/value.ambient_temp"
+        }
+      },
+      "required": [
+        "mean",
+        "min",
+        "max",
+        "last"
+      ],
+      "additionalProperties": false
+    },
+    "stats.boolean": {
+      "type": "object",
+      "properties": {
+        "last": {
+          "type": "boolean",
+          "description": "Value of the last sample in the window."
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of rising edges (false -> true) in the window, as for ABS activations (docs/simulator-spec.md, section 5)."
+        }
+      },
+      "required": [
+        "last",
+        "count"
+      ],
+      "additionalProperties": false
+    },
+    "periodic_message": {
+      "type": "object",
+      "description": "Summary of one vehicle over one aggregation window (spec section 5).",
+      "properties": {
+        "message_type": {
+          "const": "periodic"
+        },
+        "schema_version": {
+          "const": 1
+        },
+        "vehicle_id": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9]*-[0-9]{3,}$"
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Per-vehicle monotonic sequence counter."
+        },
+        "window_start": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+          "description": "Start of the window in simulated time, ISO 8601 UTC."
+        },
+        "window_s": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 10,
+          "description": "Window length in seconds; below 10 for the last window of a trip."
+        },
+        "signals": {
+          "type": "object",
+          "properties": {
+            "wheel_speed_fl": {
+              "$ref": "#/$defs/stats.wheel_speed_fl"
+            },
+            "wheel_speed_fr": {
+              "$ref": "#/$defs/stats.wheel_speed_fr"
+            },
+            "wheel_speed_rl": {
+              "$ref": "#/$defs/stats.wheel_speed_rl"
+            },
+            "wheel_speed_rr": {
+              "$ref": "#/$defs/stats.wheel_speed_rr"
+            },
+            "vehicle_ref_speed": {
+              "$ref": "#/$defs/stats.vehicle_ref_speed"
+            },
+            "brake_pedal_pressed": {
+              "$ref": "#/$defs/stats.boolean"
+            },
+            "master_cyl_pressure": {
+              "$ref": "#/$defs/stats.master_cyl_pressure"
+            },
+            "abs_active": {
+              "$ref": "#/$defs/stats.boolean"
+            },
+            "esc_active": {
+              "$ref": "#/$defs/stats.boolean"
+            },
+            "tcs_active": {
+              "$ref": "#/$defs/stats.boolean"
+            },
+            "brake_disc_temp_est_fl": {
+              "$ref": "#/$defs/stats.brake_disc_temp_est_fl"
+            },
+            "brake_disc_temp_est_fr": {
+              "$ref": "#/$defs/stats.brake_disc_temp_est_fr"
+            },
+            "brake_disc_temp_est_rl": {
+              "$ref": "#/$defs/stats.brake_disc_temp_est_rl"
+            },
+            "brake_disc_temp_est_rr": {
+              "$ref": "#/$defs/stats.brake_disc_temp_est_rr"
+            },
+            "brake_pad_wear_warning": {
+              "$ref": "#/$defs/stats.boolean"
+            },
+            "brake_fluid_level_warning": {
+              "$ref": "#/$defs/stats.boolean"
+            },
+            "accel_long": {
+              "$ref": "#/$defs/stats.accel_long"
+            },
+            "accel_lat": {
+              "$ref": "#/$defs/stats.accel_lat"
+            },
+            "yaw_rate": {
+              "$ref": "#/$defs/stats.yaw_rate"
+            },
+            "steering_wheel_angle": {
+              "$ref": "#/$defs/stats.steering_wheel_angle"
+            },
+            "steering_wheel_rate": {
+              "$ref": "#/$defs/stats.steering_wheel_rate"
+            },
+            "driver_torque": {
+              "$ref": "#/$defs/stats.driver_torque"
+            },
+            "eps_assist_torque": {
+              "$ref": "#/$defs/stats.eps_assist_torque"
+            },
+            "eps_temperature": {
+              "$ref": "#/$defs/stats.eps_temperature"
+            },
+            "eps_derating_active": {
+              "$ref": "#/$defs/stats.boolean"
+            },
+            "sas_calibrated": {
+              "$ref": "#/$defs/stats.boolean"
+            },
+            "tyre_pressure_fl": {
+              "$ref": "#/$defs/stats.tyre_pressure_fl"
+            },
+            "tyre_pressure_fr": {
+              "$ref": "#/$defs/stats.tyre_pressure_fr"
+            },
+            "tyre_pressure_rl": {
+              "$ref": "#/$defs/stats.tyre_pressure_rl"
+            },
+            "tyre_pressure_rr": {
+              "$ref": "#/$defs/stats.tyre_pressure_rr"
+            },
+            "tyre_temp_fl": {
+              "$ref": "#/$defs/stats.tyre_temp_fl"
+            },
+            "tyre_temp_fr": {
+              "$ref": "#/$defs/stats.tyre_temp_fr"
+            },
+            "tyre_temp_rl": {
+              "$ref": "#/$defs/stats.tyre_temp_rl"
+            },
+            "tyre_temp_rr": {
+              "$ref": "#/$defs/stats.tyre_temp_rr"
+            },
+            "engine_speed": {
+              "$ref": "#/$defs/stats.engine_speed"
+            },
+            "coolant_temp": {
+              "$ref": "#/$defs/stats.coolant_temp"
+            },
+            "accel_pedal_position": {
+              "$ref": "#/$defs/stats.accel_pedal_position"
+            },
+            "odometer": {
+              "$ref": "#/$defs/stats.odometer"
+            },
+            "ambient_temp": {
+              "$ref": "#/$defs/stats.ambient_temp"
+            }
+          },
+          "required": [
+            "wheel_speed_fl",
+            "wheel_speed_fr",
+            "wheel_speed_rl",
+            "wheel_speed_rr",
+            "vehicle_ref_speed",
+            "brake_pedal_pressed",
+            "master_cyl_pressure",
+            "abs_active",
+            "esc_active",
+            "tcs_active",
+            "brake_disc_temp_est_fl",
+            "brake_disc_temp_est_fr",
+            "brake_disc_temp_est_rl",
+            "brake_disc_temp_est_rr",
+            "brake_pad_wear_warning",
+            "brake_fluid_level_warning",
+            "accel_long",
+            "accel_lat",
+            "yaw_rate",
+            "steering_wheel_angle",
+            "steering_wheel_rate",
+            "driver_torque",
+            "eps_assist_torque",
+            "eps_temperature",
+            "eps_derating_active",
+            "sas_calibrated",
+            "tyre_pressure_fl",
+            "tyre_pressure_fr",
+            "tyre_pressure_rl",
+            "tyre_pressure_rr",
+            "tyre_temp_fl",
+            "tyre_temp_fr",
+            "tyre_temp_rl",
+            "tyre_temp_rr",
+            "engine_speed",
+            "coolant_temp",
+            "accel_pedal_position",
+            "odometer",
+            "ambient_temp"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "message_type",
+        "schema_version",
+        "vehicle_id",
+        "seq",
+        "window_start",
+        "window_s",
+        "signals"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

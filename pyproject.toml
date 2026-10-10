@@ -23,6 +23,10 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM"]
 
+[tool.ruff.lint.isort]
+# The simulator package lives under simulator/src/, where ruff does not detect it as first-party.
+known-first-party = ["simulator"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = ["--strict-markers"]

@@ -1,0 +1,517 @@
+# Signal catalogue (FR-16): the single source of truth for the telemetry schema.
+# simulator/schema/telemetry.schema.json is generated from this file (`make schema`);
+# never edit the schema by hand.
+#
+# Fields of each signal:
+#   name         unique signal name, as emitted in telemetry
+#   group        functional group (docs/simulator-spec.md, section 3)
+#   ecu          source ECU (one of `ecus`)
+#   type         number | boolean
+#   unit         unit on the wire ("-" for booleans)
+#   range        sensor measurement range [min, max] (null for booleans)
+#   resolution   smallest step on the wire; every emitted value is rounded to it (null for booleans)
+#   raw_bits     width of the notional fixed-point field carrying the signal (null for booleans)
+#   offset       physical value of raw 0: value = offset + raw * resolution (null for booleans)
+#   invalid      value sent when the ECU cannot provide the signal (null for booleans)
+#   dynamic      true if modelled dynamically in v1.0; false if static or nominal (spec section 3)
+#   description  optional; given for every signal whose sign carries a direction
+#
+# Ranges are sensor measurement ranges, not mechanical limits. Mechanical limits, such as the
+# steering lock, are vehicle parameters in simulator/config/ with their rationale.
+#
+# Invalid values: invalid = the field's maximum raw value, converted with the signal's resolution
+# and offset, i.e. offset + (2**raw_bits - 1) * resolution. Temperatures use a -40 degC offset;
+# direction-signed signals use offset = -(2**(raw_bits - 1)) * resolution. Every range lies within
+# the encodable values and below the invalid value
+# (checked by tests/unit/simulator/test_catalogue.py).
+#
+# Booleans have no invalid value in v1.0 (decision): a boolean is always reported as true or false.
+#
+# Sign conventions (ISO 8855): vehicle axes x forward, y left, z up.
+#   yaw_rate               positive counter-clockwise seen from above (left turn)
+#   steering_wheel_angle   positive to the left (left turn)
+#   accel_lat              positive to the left
+#   accel_long             positive forward; negative when braking
+#
+# Values are plausible orders of magnitude for a light commercial van of the fictional manufacturer
+# Nordwind. They are not taken from any real vehicle or bus specification.
+
+schema_version: 1
+
+ecus:
+  - id: abs_esc
+    description: Brake control unit (ABS/ESC)
+  - id: esc_sensor_cluster
+    description: Inertial sensor cluster used by ESC
+  - id: sas
+    description: Steering angle sensor
+  - id: eps
+    description: Electric power steering (column type)
+  - id: tpms
+    description: Tyre pressure monitoring system
+  - id: ecm
+    description: Engine control module
+  - id: instrument_cluster
+    description: Instrument cluster
+
+signals:
+  # Braking (ABS/ESC)
+  - name: wheel_speed_fl
+    group: braking
+    ecu: abs_esc
+    type: number
+    unit: km/h
+    range: [0, 250]
+    resolution: 0.01
+    raw_bits: 16
+    offset: 0
+    invalid: 655.35
+    dynamic: true
+  - name: wheel_speed_fr
+    group: braking
+    ecu: abs_esc
+    type: number
+    unit: km/h
+    range: [0, 250]
+    resolution: 0.01
+    raw_bits: 16
+    offset: 0
+    invalid: 655.35
+    dynamic: true
+  - name: wheel_speed_rl
+    group: braking
+    ecu: abs_esc
+    type: number
+    unit: km/h
+    range: [0, 250]
+    resolution: 0.01
+    raw_bits: 16
+    offset: 0
+    invalid: 655.35
+    dynamic: true
+  - name: wheel_speed_rr
+    group: braking
+    ecu: abs_esc
+    type: number
+    unit: km/h
+    range: [0, 250]
+    resolution: 0.01
+    raw_bits: 16
+    offset: 0
+    invalid: 655.35
+    dynamic: true
+  - name: vehicle_ref_speed
+    group: braking
+    ecu: abs_esc
+    type: number
+    unit: km/h
+    range: [0, 250]
+    resolution: 0.01
+    raw_bits: 16
+    offset: 0
+    invalid: 655.35
+    dynamic: true
+  - name: brake_pedal_pressed
+    group: braking
+    ecu: abs_esc
+    type: boolean
+    unit: "-"
+    range: null
+    resolution: null
+    raw_bits: null
+    offset: null
+    invalid: null
+    dynamic: true
+  - name: master_cyl_pressure
+    group: braking
+    ecu: abs_esc
+    type: number
+    unit: bar
+    range: [0, 250]
+    resolution: 0.1
+    raw_bits: 12
+    offset: 0
+    invalid: 409.5
+    dynamic: true
+  - name: abs_active
+    group: braking
+    ecu: abs_esc
+    type: boolean
+    unit: "-"
+    range: null
+    resolution: null
+    raw_bits: null
+    offset: null
+    invalid: null
+    dynamic: true
+  - name: esc_active
+    group: braking
+    ecu: abs_esc
+    type: boolean
+    unit: "-"
+    range: null
+    resolution: null
+    raw_bits: null
+    offset: null
+    invalid: null
+    dynamic: true
+  - name: tcs_active
+    group: braking
+    ecu: abs_esc
+    type: boolean
+    unit: "-"
+    range: null
+    resolution: null
+    raw_bits: null
+    offset: null
+    invalid: null
+    dynamic: true
+  - name: brake_disc_temp_est_fl
+    group: braking
+    ecu: abs_esc
+    type: number
+    unit: degC
+    range: [-40, 900]
+    resolution: 1
+    raw_bits: 10
+    offset: -40
+    invalid: 983
+    dynamic: true
+  - name: brake_disc_temp_est_fr
+    group: braking
+    ecu: abs_esc
+    type: number
+    unit: degC
+    range: [-40, 900]
+    resolution: 1
+    raw_bits: 10
+    offset: -40
+    invalid: 983
+    dynamic: true
+  - name: brake_disc_temp_est_rl
+    group: braking
+    ecu: abs_esc
+    type: number
+    unit: degC
+    range: [-40, 900]
+    resolution: 1
+    raw_bits: 10
+    offset: -40
+    invalid: 983
+    dynamic: true
+  - name: brake_disc_temp_est_rr
+    group: braking
+    ecu: abs_esc
+    type: number
+    unit: degC
+    range: [-40, 900]
+    resolution: 1
+    raw_bits: 10
+    offset: -40
+    invalid: 983
+    dynamic: true
+  - name: brake_pad_wear_warning
+    group: braking
+    ecu: abs_esc
+    type: boolean
+    unit: "-"
+    range: null
+    resolution: null
+    raw_bits: null
+    offset: null
+    invalid: null
+    dynamic: false
+  - name: brake_fluid_level_warning
+    group: braking
+    ecu: abs_esc
+    type: boolean
+    unit: "-"
+    range: null
+    resolution: null
+    raw_bits: null
+    offset: null
+    invalid: null
+    dynamic: false
+
+  # Vehicle dynamics (ESC sensor cluster)
+  - name: accel_long
+    group: vehicle_dynamics
+    ecu: esc_sensor_cluster
+    type: number
+    unit: m/s2
+    range: [-15, 15]
+    resolution: 0.01
+    raw_bits: 16
+    offset: -327.68
+    invalid: 327.67
+    dynamic: true
+    description: >-
+      Longitudinal acceleration along the vehicle x axis; positive forward,
+      negative when braking.
+  - name: accel_lat
+    group: vehicle_dynamics
+    ecu: esc_sensor_cluster
+    type: number
+    unit: m/s2
+    range: [-15, 15]
+    resolution: 0.01
+    raw_bits: 16
+    offset: -327.68
+    invalid: 327.67
+    dynamic: true
+    description: Lateral acceleration along the vehicle y axis; positive to the left.
+  - name: yaw_rate
+    group: vehicle_dynamics
+    ecu: esc_sensor_cluster
+    type: number
+    unit: deg/s
+    range: [-120, 120]
+    resolution: 0.01
+    raw_bits: 16
+    offset: -327.68
+    invalid: 327.67
+    dynamic: true
+    description: >-
+      Rotation rate about the vehicle z axis; positive counter-clockwise seen
+      from above (left turn).
+
+  # Steering (angle sensor, EPS)
+  - name: steering_wheel_angle
+    group: steering
+    ecu: sas
+    type: number
+    unit: deg
+    range: [-780, 780]
+    resolution: 0.1
+    raw_bits: 16
+    offset: -3276.8
+    invalid: 3276.7
+    dynamic: true
+    description: >-
+      Steering-wheel angle from the straight-ahead position; positive to the
+      left (left turn).
+  - name: steering_wheel_rate
+    group: steering
+    ecu: sas
+    type: number
+    unit: deg/s
+    range: [-1500, 1500]
+    resolution: 1
+    raw_bits: 12
+    offset: -2048
+    invalid: 2047
+    dynamic: true
+    description: >-
+      Time derivative of steering_wheel_angle; positive while the angle increases (wheel turning
+      towards the left).
+  - name: driver_torque
+    group: steering
+    ecu: eps
+    type: number
+    unit: Nm
+    range: [-12, 12]
+    resolution: 0.01
+    raw_bits: 16
+    offset: -327.68
+    invalid: 327.67
+    dynamic: true
+    description: >-
+      Torque applied by the driver on the steering wheel; positive to the left,
+      same sign as steering_wheel_angle.
+  - name: eps_assist_torque
+    group: steering
+    ecu: eps
+    type: number
+    unit: Nm
+    range: [-80, 80]
+    resolution: 0.1
+    raw_bits: 12
+    offset: -204.8
+    invalid: 204.7
+    dynamic: true
+    description: >-
+      Column-type EPS; assist torque at the steering column, positive to the
+      left, same sign as driver_torque.
+  - name: eps_temperature
+    group: steering
+    ecu: eps
+    type: number
+    unit: degC
+    range: [-40, 150]
+    resolution: 1
+    raw_bits: 8
+    offset: -40
+    invalid: 215
+    dynamic: false
+  - name: eps_derating_active
+    group: steering
+    ecu: eps
+    type: boolean
+    unit: "-"
+    range: null
+    resolution: null
+    raw_bits: null
+    offset: null
+    invalid: null
+    dynamic: false
+  - name: sas_calibrated
+    group: steering
+    ecu: sas
+    type: boolean
+    unit: "-"
+    range: null
+    resolution: null
+    raw_bits: null
+    offset: null
+    invalid: null
+    dynamic: false
+
+  # Tyres (TPMS); pressures are gauge pressures
+  - name: tyre_pressure_fl
+    group: tyres
+    ecu: tpms
+    type: number
+    unit: bar
+    range: [0, 8]
+    resolution: 0.01
+    raw_bits: 10
+    offset: 0
+    invalid: 10.23
+    dynamic: true
+  - name: tyre_pressure_fr
+    group: tyres
+    ecu: tpms
+    type: number
+    unit: bar
+    range: [0, 8]
+    resolution: 0.01
+    raw_bits: 10
+    offset: 0
+    invalid: 10.23
+    dynamic: true
+  - name: tyre_pressure_rl
+    group: tyres
+    ecu: tpms
+    type: number
+    unit: bar
+    range: [0, 8]
+    resolution: 0.01
+    raw_bits: 10
+    offset: 0
+    invalid: 10.23
+    dynamic: true
+  - name: tyre_pressure_rr
+    group: tyres
+    ecu: tpms
+    type: number
+    unit: bar
+    range: [0, 8]
+    resolution: 0.01
+    raw_bits: 10
+    offset: 0
+    invalid: 10.23
+    dynamic: true
+  - name: tyre_temp_fl
+    group: tyres
+    ecu: tpms
+    type: number
+    unit: degC
+    range: [-40, 120]
+    resolution: 1
+    raw_bits: 8
+    offset: -40
+    invalid: 215
+    dynamic: true
+  - name: tyre_temp_fr
+    group: tyres
+    ecu: tpms
+    type: number
+    unit: degC
+    range: [-40, 120]
+    resolution: 1
+    raw_bits: 8
+    offset: -40
+    invalid: 215
+    dynamic: true
+  - name: tyre_temp_rl
+    group: tyres
+    ecu: tpms
+    type: number
+    unit: degC
+    range: [-40, 120]
+    resolution: 1
+    raw_bits: 8
+    offset: -40
+    invalid: 215
+    dynamic: true
+  - name: tyre_temp_rr
+    group: tyres
+    ecu: tpms
+    type: number
+    unit: degC
+    range: [-40, 120]
+    resolution: 1
+    raw_bits: 8
+    offset: -40
+    invalid: 215
+    dynamic: true
+
+  # Powertrain (simplified)
+  - name: engine_speed
+    group: powertrain
+    ecu: ecm
+    type: number
+    unit: rpm
+    range: [0, 6000]
+    resolution: 1
+    raw_bits: 14
+    offset: 0
+    invalid: 16383
+    dynamic: true
+  - name: coolant_temp
+    group: powertrain
+    ecu: ecm
+    type: number
+    unit: degC
+    range: [-40, 215]
+    resolution: 1
+    raw_bits: 10
+    offset: -40
+    invalid: 983
+    dynamic: true
+    description: Range as in OBD-II PID 0x05 (engine coolant temperature).
+  - name: accel_pedal_position
+    group: powertrain
+    ecu: ecm
+    type: number
+    unit: "%"
+    range: [0, 100]
+    resolution: 0.1
+    raw_bits: 10
+    offset: 0
+    invalid: 102.3
+    dynamic: true
+
+  # Context
+  - name: odometer
+    group: context
+    ecu: instrument_cluster
+    type: number
+    unit: km
+    range: [0, 999999]
+    resolution: 0.1
+    raw_bits: 24
+    offset: 0
+    invalid: 1677721.5
+    dynamic: true
+  - name: ambient_temp
+    group: context
+    ecu: instrument_cluster
+    type: number
+    unit: degC
+    range: [-40, 60]
+    resolution: 0.5
+    raw_bits: 8
+    offset: -40
+    invalid: 87.5
+    dynamic: false
