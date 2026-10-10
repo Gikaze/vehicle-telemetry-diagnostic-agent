@@ -1,0 +1,332 @@
+# Vehicle model of the fictional Nordwind LV-1 light commercial van.
+#
+# Every parameter is {value, unit, rationale}; anything else is rejected, except the structural
+# fields `model` and `drive_axle`. The code declares the exact set of parameters it uses, so no
+# constant of the vehicle model or the brake ECU logic is hard-coded elsewhere.
+# Values are indicative orders of magnitude for a light commercial van, chosen from general public
+# knowledge. They are not calibrated against any real vehicle (docs/simulator-spec.md, section 8).
+# Physical constants (gravity, 0 degC in kelvin) are in simulator/src/simulator/constants.py;
+# ambient conditions (air density, atmospheric pressure, temperature) are in duty_cycle.yaml.
+
+model:
+  id: nordwind-lv1
+  name: Nordwind LV-1
+drive_axle: rear
+
+mass:
+  mass_empty:
+    value: 2300
+    unit: kg
+    rationale: Unladen mass of a van in the 3.5 t gross vehicle weight class.
+  payload_max:
+    value: 1000
+    unit: kg
+    rationale: >-
+      Upper bound of the per-vehicle payload draw (uniform from 0); keeps the laden mass below
+      3.5 t gross vehicle weight.
+
+geometry:
+  wheelbase:
+    value: 3.6
+    unit: m
+    rationale: Mid-length van; used by the single-track yaw rate model.
+  track_width:
+    value: 1.7
+    unit: m
+    rationale: Typical van track; sets the wheel speed difference between inner and outer wheels.
+  tyre_rolling_radius:
+    value: 0.35
+    unit: m
+    rationale: Tyre of about 0.70 m diameter, common on light commercial vehicles.
+
+steering:
+  steering_ratio:
+    value: 17
+    unit: "-"
+    rationale: Steering-wheel angle over road-wheel angle; usual range 15 to 20.
+  steering_wheel_lock:
+    value: 540
+    unit: deg
+    rationale: >-
+      Mechanical limit of the steering wheel from straight ahead: 1.5 turns each way, 3 turns lock
+      to lock. With the steering ratio this gives a road-wheel angle of about 32 deg. A mechanical
+      limit, distinct from the sensor measurement range in catalogue.yaml.
+  steering_wheel_rate_max:
+    value: 360
+    unit: deg/s
+    rationale: >-
+      Upper bound of steering-wheel rate in normal driving (one turn per second); limits how fast
+      the drive profile changes the steering angle.
+  driver_torque_gain_rate:
+    value: 0.004
+    unit: Nm/(deg/s)
+    rationale: >-
+      Driver torque per steering-wheel rate (damping felt while turning): about 1.4 Nm at the
+      maximum rate. Driver torque = gain_rate * rate + gain_lat * accel_lat
+      + gain_park * angle * exp(-v / eps_assist_fade_speed).
+  driver_torque_gain_lat:
+    value: 0.8
+    unit: Nm/(m/s2)
+    rationale: >-
+      Driver torque per lateral acceleration (self-aligning torque felt through the wheel): about
+      2.4 Nm at the profile's lateral acceleration limit.
+  driver_torque_gain_park:
+    value: 0.01
+    unit: Nm/deg
+    rationale: >-
+      Driver torque per steering-wheel angle at standstill (tyre scrub when steering without
+      rolling), fading with speed through exp(-v / eps_assist_fade_speed): about 5 Nm at 500 deg,
+      hence about 30 Nm of assist at standstill. First steering item to cut if M1 runs over.
+  eps_assist_ratio_standstill:
+    value: 6
+    unit: "-"
+    rationale: >-
+      Assist torque over driver torque at standstill. Assist = ratio(v) * driver torque with
+      ratio(v) = high + (standstill - high) * exp(-v / eps_assist_fade_speed): column-type EPS
+      assists most when parking.
+  eps_assist_ratio_high_speed:
+    value: 2
+    unit: "-"
+    rationale: Assist ratio approached at high speed, where less assist keeps the steering stable.
+  eps_assist_fade_speed:
+    value: 10
+    unit: m/s
+    rationale: >-
+      Speed scale of the assist ratio fade and of the standstill steering torque; assist is mostly
+      faded above about 50 km/h.
+
+longitudinal:
+  accel_max:
+    value: 2.0
+    unit: m/s2
+    rationale: Upper bound of drive-profile acceleration for a laden van with a small diesel.
+  decel_service_max:
+    value: 4.0
+    unit: m/s2
+    rationale: Upper bound of normal service braking; stays well below ABS intervention.
+  speed_tracking_gain:
+    value: 0.5
+    unit: 1/s
+    rationale: >-
+      Proportional gain of the driver following the segment target speed:
+      a = clip(gain * (v_target - v), -decel_service_max, accel_max); reaches the target within
+      a few seconds.
+  drag_area:
+    value: 1.3
+    unit: m2
+    rationale: Drag coefficient times frontal area (about 0.35 x 3.7 m2) of a van body.
+  rolling_resistance:
+    value: 0.010
+    unit: "-"
+    rationale: Rolling resistance coefficient of a road tyre on asphalt.
+  engine_braking_decel:
+    value: 0.4
+    unit: m/s2
+    rationale: Deceleration from engine drag with the accelerator released, in gear.
+
+lateral:
+  accel_lat_max:
+    value: 3.0
+    unit: m/s2
+    rationale: >-
+      Upper bound used by the drive profile; keeps the single-track model in its low lateral
+      acceleration domain (spec section 8).
+
+powertrain:
+  engine_power_max:
+    value: 100000
+    unit: W
+    rationale: >-
+      Rated power of a small van diesel. Accelerator pedal = 100 * clip(F * max(v,
+      pedal_mapping_min_speed) / engine_power_max, 0, 1), with F the tractive force.
+  pedal_mapping_min_speed:
+    value: 3
+    unit: m/s
+    rationale: >-
+      Speed floor of the pedal mapping, so that pulling away from standstill gives a non-zero pedal
+      position.
+  gear_overall_ratios:
+    value: [17.55, 10.14, 6.63, 4.68, 3.705, 3.042]
+    unit: "-"
+    rationale: >-
+      Gearbox ratios 4.5, 2.6, 1.7, 1.2, 0.95, 0.78 times a 3.9 final drive. Engine speed =
+      v / tyre_rolling_radius * ratio * 60 / (2 pi), and max(idle_speed, that) when pulling away in
+      first gear (clutch slipping). About 2075 rpm at 90 km/h in sixth.
+  upshift_speed:
+    value: 2500
+    unit: rpm
+    rationale: >-
+      Engine speed at which the gear schedule shifts up; after the largest ratio step (0.578,
+      first to second) the engine speed is 1444 rpm.
+  downshift_speed:
+    value: 1200
+    unit: rpm
+    rationale: >-
+      Engine speed below which the gear schedule shifts down. The loader requires
+      downshift_speed <= upshift_speed * min(r[n+1] / r[n]) - shift_margin, so an upshift never
+      triggers an immediate downshift (gear hunting).
+  shift_margin:
+    value: 100
+    unit: rpm
+    rationale: >-
+      Minimum gap between the engine speed just after an upshift and the downshift speed, so a
+      small speed loss right after a shift does not cause hunting.
+  idle_speed:
+    value: 750
+    unit: rpm
+    rationale: Idle speed of a small diesel engine.
+  engine_speed_max:
+    value: 4500
+    unit: rpm
+    rationale: Governed maximum speed of a small diesel engine.
+
+brakes:
+  front_brake_share:
+    value: 0.70
+    unit: "-"
+    rationale: Share of braking force on the front axle; front-biased as in most road vehicles.
+  brake_pressure_gain:
+    value: 10
+    unit: bar/(m/s2)
+    rationale: >-
+      Master cylinder pressure per m/s2 of brake deceleration at brake_reference_mass. Pressure =
+      gain * (m / brake_reference_mass) * a_brake, so the pressure scales with the braking force
+      m * a_brake; about 40 bar at the service braking limit for the reference mass.
+  brake_reference_mass:
+    value: 2800
+    unit: kg
+    rationale: Mass at which brake_pressure_gain is stated (unladen mass plus half the payload).
+  brake_switch_pressure:
+    value: 2
+    unit: bar
+    rationale: Pressure above which brake_pedal_pressed is reported (brake light switch).
+  brake_energy_to_disc:
+    value: 0.9
+    unit: "-"
+    rationale: Share of braking energy heating the disc; the rest heats pads and air directly.
+  disc_heat_capacity_front:
+    value: 3700
+    unit: J/K
+    rationale: About 8 kg of cast iron at 460 J/(kg K) per front disc.
+  disc_heat_capacity_rear:
+    value: 2800
+    unit: J/K
+    rationale: About 6 kg of cast iron at 460 J/(kg K) per rear disc.
+  disc_cooling_tau_standstill:
+    value: 600
+    unit: s
+    rationale: >-
+      First-order cooling time constant at standstill (natural convection). Law: 1/tau is affine
+      in speed (convective heat transfer assumed proportional to speed), interpolated between this
+      value and disc_cooling_tau_at_20mps: 1/tau(v) = (1/600) * (1 + v / 6.67 m/s). Same law on
+      both axles, which keeps the front/rear temperature rise ratio constant.
+  disc_cooling_tau_at_20mps:
+    value: 150
+    unit: s
+    rationale: Cooling time constant at 20 m/s; second point of the law above.
+
+ecu_logic:
+  wheel_slip_per_decel:
+    value: 0.005
+    unit: 1/(m/s2)
+    rationale: >-
+      Braking slip of every wheel per m/s2 of deceleration: 2 % at the service braking limit, well
+      below abs_slip_threshold.
+  wheel_slip_per_accel:
+    value: 0.005
+    unit: 1/(m/s2)
+    rationale: >-
+      Traction slip of the driven (rear) wheels per m/s2 of acceleration: 1 % at accel_max, well
+      below tcs_slip_threshold.
+  abs_slip_threshold:
+    value: 0.15
+    unit: "-"
+    rationale: Braking slip above which ABS intervenes; never reached by v1.0 drive profiles.
+  tcs_slip_threshold:
+    value: 0.10
+    unit: "-"
+    rationale: >-
+      Traction slip of the rear (driven) wheels against the front wheels above which TCS
+      intervenes; never reached by v1.0 drive profiles.
+  esc_yaw_error_threshold:
+    value: 5
+    unit: deg/s
+    rationale: >-
+      Difference between measured yaw rate and the single-track reference above which ESC
+      intervenes; never reached by v1.0 drive profiles.
+
+tyres:
+  tyre_pressure_nominal:
+    value: 3.8
+    unit: bar
+    rationale: Gauge pressure at 20 degC; light commercial tyres run at about 3.5 to 4.5 bar.
+  tyre_pressure_reference_temp:
+    value: 20
+    unit: degC
+    rationale: >-
+      Temperature at which the nominal pressure is set (cold tyre). Pressure follows temperature by
+      the ideal-gas law applied to absolute pressure.
+  tyre_warmup_rise:
+    value: 20
+    unit: K
+    rationale: >-
+      Steady temperature rise above ambient at tyre_warmup_reference_speed; target = ambient +
+      rise * min(1, v / reference speed). Plausible range 15 to 30 K.
+  tyre_warmup_reference_speed:
+    value: 20
+    unit: m/s
+    rationale: Speed at which the tyre reaches its full steady temperature rise.
+  tyre_thermal_tau:
+    value: 1200
+    unit: s
+    rationale: >-
+      First-order time constant of tyre warm-up and cool-down (about 20 min), also used for the
+      closed-form cooling while parked.
+
+engine:
+  coolant_thermostat_temp:
+    value: 90
+    unit: degC
+    rationale: Regulated coolant temperature once the thermostat opens.
+  coolant_load_rise:
+    value: 4
+    unit: K
+    rationale: >-
+      Rise of the regulated temperature at full load; target = thermostat + rise * pedal / 100,
+      which couples coolant temperature to load (spec section 4) and stays in the 85-95 degC band.
+  coolant_warmup_tau:
+    value: 480
+    unit: s
+    rationale: >-
+      First-order warm-up time constant towards the regulated band, engine running (about 8 min).
+  coolant_cooldown_tau:
+    value: 3600
+    unit: s
+    rationale: >-
+      First-order cool-down time constant with the engine off (engine block heat capacity), used
+      for the closed-form cooling while parked.
+
+variation:
+  tyre_radius_spread:
+    value: 0.01
+    unit: "-"
+    rationale: >-
+      Per-vehicle relative spread (uniform, plus or minus) of the tyre rolling radius, same for the
+      four wheels (one tyre set); per-wheel spread would fake cornering on straight roads.
+  disc_heat_capacity_vehicle_spread:
+    value: 0.05
+    unit: "-"
+    rationale: >-
+      Per-vehicle relative spread (uniform, plus or minus) of disc heat capacity (disc make,
+      wear).
+  disc_heat_capacity_wheel_spread:
+    value: 0.02
+    unit: "-"
+    rationale: >-
+      Per-wheel relative spread (uniform, plus or minus) on top of the vehicle spread. Rises scale
+      with 1 / heat capacity, so the left/right rise difference on an axle stays within
+      2 * 0.02 / 0.98 = 4.1 % of the rise (plausibility.yaml, disc_lr_spread_rel_max).
+  tyre_pressure_wheel_spread:
+    value: 0.1
+    unit: bar
+    rationale: Per-wheel spread (uniform, plus or minus) of the cold pressure set by the operator.

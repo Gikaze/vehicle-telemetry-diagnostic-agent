@@ -1,0 +1,59 @@
+# Bounds of the physical invariants (NFR-15) and of the provisional anomaly definition used until
+# the FR-06 rules exist (M3). Invariant tests check the true states against these bounds; checks on
+# measured values widen them by the measurement error bound derived in code from sensors.yaml
+# (noise) and catalogue.yaml (resolution).
+
+disc_temperature:
+  disc_lr_spread_rel_max:
+    value: 0.05
+    unit: "-"
+    rationale: >-
+      Left/right disc temperature rise difference on one axle, relative to the larger rise. Rises
+      scale with 1 / heat capacity (same cooling law on both wheels), and the per-wheel heat
+      capacity spread of 2 % gives at most 2 * 0.02 / 0.98 = 4.1 %.
+  disc_lr_spread_abs_max:
+    value: 2
+    unit: K
+    rationale: >-
+      Absolute allowance added to the relative bound: covers the 1 K resolution of each of the two
+      disc temperature estimates.
+  disc_front_rear_ratio_min:
+    value: 1.69
+    unit: "-"
+    rationale: >-
+      Lower bound of the front/rear mean disc temperature rise ratio (true state). With the same
+      cooling law on both axles each rise is proportional to 1 / heat capacity, so the ratio is
+      constant: (0.70 / 0.30) * (2800 / 3700) = 1.7658, times the per-wheel factor, which ranges
+      from 0.98 / 1.02 (front discs heavier, rear lighter) to 1.02 / 0.98: true range
+      [1.6965, 1.8378]. Bounds rounded outward to two decimals, without further margin. The
+      per-vehicle heat capacity factor applies to all four discs and cancels.
+  disc_front_rear_ratio_max:
+    value: 1.84
+    unit: "-"
+    rationale: Upper bound of the same ratio; see disc_front_rear_ratio_min.
+  disc_ratio_window:
+    value: 60
+    unit: s
+    rationale: Window over which the front and rear rises are averaged before taking their ratio.
+  disc_ratio_min_rear_rise:
+    value: 20
+    unit: K
+    rationale: >-
+      The ratio is evaluated only when the mean rear rise exceeds this value. On measured values the
+      quantisation error (0.5 K per disc estimate, 0.25 K on ambient) moves the ratio by at most
+      (r * R + 0.75) / (R - 0.75) upwards and (r * R - 0.75) / (R + 0.75) downwards; at R = 20 K
+      the bounds [1.69, 1.84] widen to [1.59, 1.95]. The widening is computed in code from the
+      catalogue resolutions, not stored here.
+
+coolant:
+  coolant_rate_max:
+    value: 0.5
+    unit: K/s
+    rationale: >-
+      Largest rate of change of coolant temperature in normal operation (true state, or measured
+      means over 10 s windows). The fastest warm-up is (90 - (-5)) / 480 s = 0.2 K/s from the
+      coldest ambient, plus the load term; a sensor short to ground jumps far faster.
+  coolant_band_max:
+    value: 95
+    unit: degC
+    rationale: Upper edge of the regulated band (thermostat 90 degC plus at most 4 K at full load).

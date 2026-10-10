@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from decimal import Decimal
+from functools import cache
 from pathlib import Path
 from typing import Any, Literal
 
@@ -87,6 +88,12 @@ class Catalogue:
     @property
     def names(self) -> tuple[str, ...]:
         return tuple(signal.name for signal in self.signals)
+
+
+@cache
+def catalogue() -> Catalogue:
+    """The repository's catalogue, loaded and validated on first use (never at import)."""
+    return load_catalogue()
 
 
 def load_catalogue(path: Path | None = None) -> Catalogue:

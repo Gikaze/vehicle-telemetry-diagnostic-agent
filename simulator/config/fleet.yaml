@@ -1,0 +1,28 @@
+# Fleet composition. Vehicle IDs are <id_prefix>-<number>, zero-padded to id_digits (VAN-001 ...).
+# Production batches are contiguous ranges of vehicle numbers starting at 1, without gaps or
+# overlaps, so adding a vehicle never moves another vehicle to a different batch. The loader
+# rejects a fleet size that the batches do not cover or that does not fit id_digits.
+# Batch names are fictional (production year and term).
+
+id_prefix: VAN
+id_digits: 3
+model: nordwind-lv1
+batches:
+  - id: 2025-T1
+    first: 1
+    last: 25
+  - id: 2025-T2
+    first: 26
+    last: 50
+  - id: 2025-T3
+    first: 51
+    last: 75
+  - id: 2025-T4
+    first: 76
+    last: 100
+
+fleet:
+  size:
+    value: 100
+    unit: vehicles
+    rationale: Fleet size of FR-01; overridable at run time within the batch ranges.

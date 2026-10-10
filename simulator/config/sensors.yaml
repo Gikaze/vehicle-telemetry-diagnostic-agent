@@ -1,0 +1,76 @@
+# Sensor layer: measurement noise per signal. Resolution and quantisation come from catalogue.yaml.
+#
+# Noise is Gaussian with standard deviation sigma, truncated at noise_clip_sigma * sigma, so every
+# measurement error is bounded: |measured - true| <= noise_clip_sigma * sigma + resolution / 2.
+# Invariant tests use that bound as their tolerance, so they never fail on a statistical outlier.
+# Every numeric catalogue signal is listed here with its sigma, or is noise-free in the code with a
+# stated reason (estimates computed by an ECU, fixed or integrated values).
+# Values are plausible orders of magnitude, not datasheet values of any real sensor.
+
+noise:
+  noise_clip_sigma:
+    value: 3
+    unit: "-"
+    rationale: >-
+      Truncation of the Gaussian noise at 3 sigma (99.7 % of an untruncated Gaussian), which bounds
+      every measurement error and keeps test tolerances deterministic.
+
+noise_sigma:
+  wheel_speed:
+    value: 0.05
+    unit: km/h
+    rationale: >-
+      Active wheel speed sensor jitter while rolling; applied to the four wheels. A wheel speed
+      sensor reads exactly 0 at standstill (no pulses), so no noise is added when the true speed
+      is 0.
+  accel_long:
+    value: 0.02
+    unit: m/s2
+    rationale: MEMS accelerometer noise of an ESC sensor cluster, order of a few hundredths of m/s2.
+  accel_lat:
+    value: 0.02
+    unit: m/s2
+    rationale: Same sensor cluster as accel_long.
+  yaw_rate:
+    value: 0.1
+    unit: deg/s
+    rationale: MEMS gyroscope noise of an ESC sensor cluster; also present at standstill.
+  steering_wheel_angle:
+    value: 0.1
+    unit: deg
+    rationale: Steering angle sensor noise, of the order of its resolution.
+  steering_wheel_rate:
+    value: 1
+    unit: deg/s
+    rationale: Rate reported by the steering angle sensor; noisier than the angle (differentiated).
+  driver_torque:
+    value: 0.05
+    unit: Nm
+    rationale: Torsion bar torque sensor noise of a column-type EPS.
+  eps_assist_torque:
+    value: 0.2
+    unit: Nm
+    rationale: >-
+      Assist torque reported by the EPS (motor current estimate), coarser than the torque
+      sensor.
+  master_cyl_pressure:
+    value: 0.2
+    unit: bar
+    rationale: Brake pressure sensor noise, below the brake switch pressure.
+  tyre_pressure:
+    value: 0.01
+    unit: bar
+    rationale: >-
+      TPMS pressure sensor noise, of the order of its resolution; applied to the four tyres.
+  tyre_temp:
+    value: 0.5
+    unit: K
+    rationale: TPMS temperature sensor noise; applied to the four tyres.
+  coolant_temp:
+    value: 0.3
+    unit: K
+    rationale: NTC coolant sensor noise after the ECU's filtering.
+  accel_pedal_position:
+    value: 0.2
+    unit: "%"
+    rationale: Pedal position sensor noise.

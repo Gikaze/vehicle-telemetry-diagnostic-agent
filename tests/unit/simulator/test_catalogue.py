@@ -12,6 +12,7 @@ from simulator.catalogue import (
     REQUIRED_FIELDS,
     CatalogueError,
     Signal,
+    catalogue,
     load_catalogue,
     on_grid,
     quantise,
@@ -30,9 +31,26 @@ EXCLUDED_FROM_SIGNALS = {
     "dtcs[]": "fault-scenario PR (M1 PR 4)",
 }
 
-CATALOGUE = load_catalogue()
-NUMERIC = [signal for signal in CATALOGUE.signals if signal.is_number]
-BOOLEAN = [signal for signal in CATALOGUE.signals if not signal.is_number]
+
+def _signals(numeric: bool) -> list[Signal]:
+    """Signals for per-signal parametrisation, read at collection time.
+
+    A catalogue that fails to load yields no cases here instead of breaking collection;
+    test_repository_catalogue_loads then fails with the loader's message.
+    """
+    try:
+        signals = catalogue().signals
+    except (CatalogueError, OSError, KeyError, TypeError, ValueError):
+        return []
+    return [signal for signal in signals if signal.is_number == numeric]
+
+
+NUMERIC = _signals(numeric=True)
+BOOLEAN = _signals(numeric=False)
+
+
+def test_repository_catalogue_loads() -> None:
+    load_catalogue()
 
 
 def spec_section_3_rows() -> list[list[str]]:
@@ -65,7 +83,7 @@ def test_every_spec_signal_is_in_the_catalogue() -> None:
         "an exclusion no longer appears in the spec"
     )
     expected = {name for row in rows if row[0] not in EXCLUDED_FROM_SIGNALS for name in row}
-    assert set(CATALOGUE.names) == expected
+    assert set(catalogue().names) == expected
 
 
 def _number_entry(**overrides: object) -> dict[str, object]:
@@ -142,7 +160,7 @@ def test_loader_accepts_the_minimal_entries(tmp_path: Path) -> None:
 
 
 def test_signal_names_are_unique() -> None:
-    assert len(set(CATALOGUE.names)) == len(CATALOGUE.names)
+    assert len(set(catalogue().names)) == len(catalogue().names)
 
 
 @pytest.mark.parametrize("signal", BOOLEAN, ids=lambda s: s.name)
@@ -197,13 +215,13 @@ def test_invalid_value_round_trips_through_quantisation(signal: Signal) -> None:
 
 def test_quantise_rounds_to_the_decimal_literal() -> None:
     """offset + raw * resolution can miss the decimal literal; quantise returns the literal."""
-    signal = CATALOGUE.signal("accel_pedal_position")
+    signal = catalogue().signal("accel_pedal_position")
     assert 1023 * 0.1 == 102.30000000000001  # the float hazard this guards against
     assert quantise(np.array([102.3, 0.07, 12.34]), signal).tolist() == [102.3, 0.1, 12.3]
 
 
 def test_quantise_applies_a_negative_offset() -> None:
-    signal = CATALOGUE.signal("accel_long")
+    signal = catalogue().signal("accel_long")
     assert quantise(np.array([-1.234, 0.0, 2.005]), signal).tolist() == [-1.23, 0.0, 2.0]
 
 
