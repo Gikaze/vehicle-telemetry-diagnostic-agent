@@ -80,6 +80,10 @@ check that the one-time code matches, approve, **then** press a key in the termi
 
 Create a free LocalStack account (plan: **Hobby**, non-commercial) before running `lstk`.
 
+After this first login, start and stop LocalStack with `make up` and `make down`. `make up` runs the pinned
+image `LOCALSTACK_IMAGE` from the `Makefile` (NFR-07) through `lstk start --image`, which does not change your
+lstk configuration; a bare `lstk` or `lstk start` uses the tag from that configuration (`latest` by default).
+
 ## 5. Verification
 
 ```bash

@@ -4,6 +4,9 @@
 SHELL := /bin/bash
 
 COMPOSE_FILE := compose.yaml
+# Pinned LocalStack image (NFR-07). Passed to `lstk start --image`, which applies it to one start
+# without writing the lstk configuration. Update the tag deliberately, never to `latest`.
+LOCALSTACK_IMAGE := localstack/localstack-pro:2026.9.1
 
 .PHONY: help setup lint test test-int up down
 
@@ -27,7 +30,7 @@ test-int: ## Run integration tests against LocalStack (requires lstk running)
 	exit $$status
 
 up: ## Start LocalStack and local services
-	lstk start --non-interactive --type aws
+	lstk start --non-interactive --type aws --image $(LOCALSTACK_IMAGE)
 	@if [ -f $(COMPOSE_FILE) ]; then docker compose -f $(COMPOSE_FILE) up -d; fi
 
 down: ## Stop local services and LocalStack
