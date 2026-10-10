@@ -132,6 +132,9 @@ Keep the `Co-Authored-By` trailer that Claude Code adds: AI assistance is disclo
 **Simulator**
 - Follow `docs/simulator-spec.md`. The signal catalogue (`simulator/catalogue.yaml`) is the single source of truth;
   the JSON schema is generated from it, never edited by hand.
+- The simulator finds its data files (catalogue, config, scenarios, schema) through `SIM_HOME`, read only by
+  `simulator/src/simulator/paths.py`. Default: the `simulator/` directory of the source tree; the container image
+  sets it explicitly. Tests use the default.
 - Keep models low-order (kinematics, single-track model, first-order thermal). No new signals or fault scenarios
   beyond the spec without an issue.
 - Physics is deterministic for a given seed; all randomness comes from one seeded generator.

@@ -41,6 +41,11 @@ def test_schema_is_valid_draft_2020_12() -> None:
     Draft202012Validator.check_schema(SCHEMA)
 
 
+def test_committed_schema_is_valid_draft_2020_12() -> None:
+    """The file consumers load is itself a valid schema, independently of the drift check."""
+    Draft202012Validator.check_schema(json.loads(schema_path().read_text()))
+
+
 def test_committed_schema_matches_the_catalogue() -> None:
     """Drift check: regenerate with `make schema` after changing catalogue.yaml."""
     assert schema_path().read_text() == render(SCHEMA)

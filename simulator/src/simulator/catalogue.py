@@ -114,6 +114,8 @@ def _parse_signal(entry: dict[str, Any], ecu_ids: set[str]) -> Signal:
     unknown = sorted(set(entry) - set(REQUIRED_FIELDS) - set(OPTIONAL_FIELDS))
     if unknown:
         raise CatalogueError(f"{name}: unknown fields {unknown}")
+    if "description" in entry and not isinstance(entry["description"], str):
+        raise CatalogueError(f"{name}: description must be text")
     if entry["ecu"] not in ecu_ids:
         raise CatalogueError(f"{name}: unknown ECU {entry['ecu']!r}")
     if entry["type"] == "boolean":

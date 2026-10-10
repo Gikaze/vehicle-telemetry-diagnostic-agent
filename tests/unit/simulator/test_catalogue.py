@@ -102,6 +102,7 @@ def _without(entry: dict[str, object], field: str) -> dict[str, object]:
     [
         *[([_without(_number_entry(), field)], "missing fields") for field in REQUIRED_FIELDS],
         ([_number_entry(colour="red")], "unknown fields"),
+        ([_number_entry(description=5)], "description must be text"),
         ([_number_entry(ecu="gearbox")], "unknown ECU"),
         ([_number_entry(), _number_entry()], "duplicate signal names"),
         ([_number_entry(type="string")], "unknown type"),
