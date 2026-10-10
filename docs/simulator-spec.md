@@ -25,7 +25,9 @@ parking brake, gearbox, lighting, body, battery, GNSS.
 ```
 
 - **Drive profile:** a trip is a sequence of segments (urban, rural, downhill, stop), each with a target speed and
-  duration drawn from a seeded random generator. Same seed, same trip (FR-02).
+  duration drawn from random streams derived from one root seed: each vehicle has its own streams, keyed
+  by its ID, so the same seed gives the same trip and adding a vehicle does not change the other
+  vehicles' trips (FR-02).
 - **Vehicle model:** true physical states updated every 0.1 s.
 - **Sensor layer:** converts true states into measured signals (noise, resolution, estimation).
 - **Fault overlay:** modifies states or signals when a scenario is active.

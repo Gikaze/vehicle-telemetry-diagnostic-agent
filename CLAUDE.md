@@ -137,7 +137,12 @@ Keep the `Co-Authored-By` trailer that Claude Code adds: AI assistance is disclo
   sets it explicitly. Tests use the default.
 - Keep models low-order (kinematics, single-track model, first-order thermal). No new signals or fault scenarios
   beyond the spec without an issue.
-- Physics is deterministic for a given seed; all randomness comes from one seeded generator.
+- Physics is deterministic for a given seed. All randomness derives from one root seed, with independent streams
+  per vehicle and per purpose (`simulator/src/simulator/rng.py`): a vehicle's streams are keyed by a BLAKE2b
+  digest of its ID, never by Python `hash()` or its position in the fleet, so adding a vehicle does not change
+  the other vehicles' data. Never share one generator across vehicles; quantities common to the whole fleet, such
+  as the day's ambient conditions, come from fleet streams (`fleet_generator`), never from a vehicle's stream.
+  Draw per vehicle in blocks, not per step.
 - Every coupling in the spec has a property-based invariant test (Hypothesis) (NFR-15).
 - Chassis fault codes are fictional Nordwind codes; only standard OBD-II P-codes may be real.
 - Fault codes use a subset of the UDS DTC status bits (FR-18); do not implement UDS services in this project.
