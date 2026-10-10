@@ -55,16 +55,22 @@ uv tool install pre-commit==4.6.2
 ### LocalStack CLI (`lstk`)
 
 The legacy `localstack` CLI and the `awslocal` / `tflocal` wrappers are deprecated; use `lstk`.
-Download the Linux release and install **all three files** — `lstk` looks for its bundled extensions
-(e.g. `doctor`) next to its own binary:
+`lstk` is pinned to **1.3.0**, the version the local setup was verified with (NFR-07). Download that release,
+check it against the published checksums, and install **all three files** — `lstk` looks for its bundled
+extensions (e.g. `doctor`) next to its own binary:
 
 ```bash
 cd /tmp
-gh release download --repo localstack/lstk --pattern '*linux_amd64*.tar.gz'
-mkdir -p lstk-extract && tar -xzf lstk_*linux_amd64*.tar.gz -C lstk-extract
+gh release download v1.3.0 --repo localstack/lstk \
+  --pattern 'lstk_1.3.0_linux_amd64.tar.gz' --pattern 'checksums.txt'
+sha256sum --check --ignore-missing checksums.txt    # must print "lstk_1.3.0_linux_amd64.tar.gz: OK"
+mkdir -p lstk-extract && tar -xzf lstk_1.3.0_linux_amd64.tar.gz -C lstk-extract
 cp lstk-extract/lstk lstk-extract/bundled-extensions lstk-extract/lstk-extensions.toml ~/.local/bin/
-cd ~ && lstk --version
+cd ~ && lstk --version                              # lstk 1.3.0
 ```
+
+`lstk` announces newer versions on start; do not run `lstk update`, which installs the latest release.
+Change the pinned version deliberately, here and in the NFR-07 note of `docs/requirements.md`.
 
 ## 4. Accounts and authentication
 
