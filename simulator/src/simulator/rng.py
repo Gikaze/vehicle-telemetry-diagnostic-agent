@@ -5,6 +5,12 @@ integers, varying identifiers first and the root seed last, as the NumPy paralle
 guide recommends. A vehicle is identified by a BLAKE2b digest of its ID (never Python `hash()`,
 which is salted per process), not by its index in the fleet, so adding a vehicle does not change
 any other vehicle's stream.
+
+Streams can carry indices (the day, the trip): the road of trip k of day d depends only on the root
+seed, the vehicle, d and k, so the number of draws one trip consumes never shifts another trip.
+Indexed streams use their own namespaces and state the number of indices: SeedSequence pads
+entropy shorter than its pool with zeros ([1, 2, 3] and [1, 2, 3, 0] give the same stream), so
+appending indices to the unindexed form could reproduce an existing stream.
 """
 
 import hashlib
@@ -14,6 +20,8 @@ import numpy as np
 
 FLEET_NAMESPACE = 0
 VEHICLE_NAMESPACE = 1
+VEHICLE_INDEXED_NAMESPACE = 2
+FLEET_INDEXED_NAMESPACE = 3
 
 
 class Stream(IntEnum):
@@ -39,15 +47,33 @@ def _check_seed(root_seed: int) -> None:
         raise ValueError("the root seed must be a non-negative integer")
 
 
-def vehicle_generator(root_seed: int, vehicle_id: str, stream: Stream) -> np.random.Generator:
-    """Random stream of one vehicle for one purpose."""
-    _check_seed(root_seed)
-    entropy = [VEHICLE_NAMESPACE, vehicle_key(vehicle_id), int(stream), root_seed]
+def _check_indices(indices: tuple[int, ...]) -> None:
+    if any(index < 0 for index in indices):
+        raise ValueError("stream indices must be non-negative integers")
+
+
+def _generator(entropy: list[int]) -> np.random.Generator:
     return np.random.Generator(np.random.PCG64(np.random.SeedSequence(entropy)))
 
 
-def fleet_generator(root_seed: int, stream: Stream) -> np.random.Generator:
-    """Random stream shared by the whole fleet (e.g. the ambient temperature of the day)."""
+def vehicle_generator(
+    root_seed: int, vehicle_id: str, stream: Stream, *indices: int
+) -> np.random.Generator:
+    """Random stream of one vehicle for one purpose, optionally per day and trip."""
     _check_seed(root_seed)
-    entropy = [FLEET_NAMESPACE, int(stream), root_seed]
-    return np.random.Generator(np.random.PCG64(np.random.SeedSequence(entropy)))
+    _check_indices(indices)
+    key = vehicle_key(vehicle_id)
+    if not indices:
+        return _generator([VEHICLE_NAMESPACE, key, int(stream), root_seed])
+    return _generator(
+        [VEHICLE_INDEXED_NAMESPACE, key, int(stream), len(indices), *indices, root_seed]
+    )
+
+
+def fleet_generator(root_seed: int, stream: Stream, *indices: int) -> np.random.Generator:
+    """Random stream shared by the whole fleet (e.g. the ambient temperature of a day)."""
+    _check_seed(root_seed)
+    _check_indices(indices)
+    if not indices:
+        return _generator([FLEET_NAMESPACE, int(stream), root_seed])
+    return _generator([FLEET_INDEXED_NAMESPACE, int(stream), len(indices), *indices, root_seed])

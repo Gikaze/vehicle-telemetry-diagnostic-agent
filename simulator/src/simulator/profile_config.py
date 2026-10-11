@@ -221,6 +221,50 @@ def check_profile_against_model(profile: Config, model: Config, duty: Config) ->
     for kind in SEGMENT_TYPES:
         _check_curves(kind, profile, model)
     _check_downhill_braking(profile, model, duty)
+    _check_day_end_margin(profile, duty)
+
+
+def longest_curve_time(profile: Config) -> float:
+    """Longest time to drive through one curve, s: widest radius, largest angle, lowest speed."""
+    times = []
+    for kind, (_, radius_max_name, _, angle_max_name, _) in CURVES.items():
+        radius = profile.si(radius_max_name)
+        speed = curve_speed(
+            radius, profile.si(f"{kind}_target_speed_min"), profile.si("curve_lateral_accel")
+        )
+        times.append(radius * profile.si(angle_max_name) / speed)
+    return max(times)
+
+
+def trip_overrun_bound(profile: Config) -> float:
+    """Upper bound of the time a trip can run past its planned duration, s.
+
+    The final stop is inserted when the remaining time equals the time to stop at approach_decel;
+    if that stop falls in or just before a curve it moves to the curve end, which adds at most the
+    whole curve plus the stop from the curve speed (at most the highest segment speed), plus one
+    physics step for the step at which the insertion is detected.
+    """
+    top_speed = max(profile.si(f"{kind}_target_speed_max") for kind in SEGMENT_TYPES)
+    return longest_curve_time(profile) + top_speed / profile.si("approach_decel") + PHYSICS_DT
+
+
+def day_end_margin(profile: Config, duty: Config) -> float:
+    """Margin kept before shift_end_latest so that the last trip ends by it in the worst case, s."""
+    return duty.value("trips_max") * trip_overrun_bound(profile)
+
+
+def effective_shift_end_latest(profile: Config, duty: Config) -> float:
+    """Latest planned end of the day, s after midnight, so the actual end is at most 18:30."""
+    return duty.si("shift_end_latest") - day_end_margin(profile, duty)
+
+
+def _check_day_end_margin(profile: Config, duty: Config) -> None:
+    if effective_shift_end_latest(profile, duty) < duty.si("shift_end_earliest"):
+        raise ConfigError(
+            f"duty_cycle.yaml: with {duty.value('trips_max')} trips each overrunning by up to "
+            f"{trip_overrun_bound(profile):.0f} s, no planned end in the shift end window keeps "
+            "the day within shift_end_latest"
+        )
 
 
 def curve_ramp_time(radius: float, angle: float, speed: float, drawn_ramp_time: float) -> float:

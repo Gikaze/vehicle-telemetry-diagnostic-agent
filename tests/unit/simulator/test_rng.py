@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 
+import numpy as np
 import pytest
 
 from simulator.rng import Stream, fleet_generator, vehicle_generator, vehicle_key
@@ -72,3 +73,48 @@ def test_stream_numbering_contract() -> None:
         "SCENARIO": 6,
         "AMBIENT": 7,
     }
+
+
+def test_unindexed_streams_keep_their_committed_entropy() -> None:
+    """Adding indexed streams must not change the streams already drawn (seeding contract)."""
+    expected = np.random.Generator(
+        np.random.PCG64(np.random.SeedSequence([1, vehicle_key("VAN-001"), 1, 42]))
+    )
+    actual = vehicle_generator(42, "VAN-001", Stream.PARAMETERS)
+    assert actual.random(3).tolist() == expected.random(3).tolist()
+    fleet_expected = np.random.Generator(np.random.PCG64(np.random.SeedSequence([0, 7, 42])))
+    assert (
+        fleet_generator(42, Stream.AMBIENT).random(3).tolist() == fleet_expected.random(3).tolist()
+    )
+
+
+def test_seed_sequence_pads_short_entropy_with_zeros() -> None:
+    """The NumPy behaviour that makes separate namespaces for indexed streams necessary."""
+    state = lambda entropy: np.random.SeedSequence(entropy).generate_state(4).tolist()  # noqa: E731
+    assert state([1, 2, 3]) == state([1, 2, 3, 0])
+
+
+@pytest.mark.parametrize("root", [0, 1, 7, 42])
+def test_indexed_streams_never_reproduce_unindexed_ones(root: int) -> None:
+    """Fleet stream [0, 7, r] is padded to [0, 7, r, 0]; an index must not land on it."""
+    unindexed = fleet_generator(root, Stream.AMBIENT).random(3).tolist()
+    for index in (0, 1, 7, 42):
+        assert fleet_generator(index, Stream.AMBIENT, root).random(3).tolist() != unindexed
+        assert fleet_generator(root, Stream.AMBIENT, index).random(3).tolist() != unindexed
+    vehicle = vehicle_generator(root, "VAN-001", Stream.PROFILE).random(3).tolist()
+    assert vehicle_generator(root, "VAN-001", Stream.PROFILE, 0).random(3).tolist() != vehicle
+
+
+def test_indices_select_independent_streams() -> None:
+    draws = {
+        indices: vehicle_generator(42, "VAN-001", Stream.PROFILE, *indices).random(3).tolist()
+        for indices in [(0,), (1,), (0, 0), (0, 1), (1, 0)]
+    }
+    assert len({tuple(value) for value in draws.values()}) == len(draws)
+    again = vehicle_generator(42, "VAN-001", Stream.PROFILE, 0, 1).random(3).tolist()
+    assert again == draws[(0, 1)]
+
+
+def test_negative_index_is_rejected() -> None:
+    with pytest.raises(ValueError, match="indices must be non-negative"):
+        vehicle_generator(42, "VAN-001", Stream.PROFILE, -1)

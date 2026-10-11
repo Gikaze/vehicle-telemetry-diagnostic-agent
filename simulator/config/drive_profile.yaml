@@ -41,11 +41,19 @@ urban:
   urban_duration_min:
     value: 2
     unit: min
-    rationale: Shortest urban segment.
+    rationale: >-
+      Shortest urban segment.
+      Nominal duration at the target speed: the segment length is target speed times this
+      duration; curves and stops make the time actually spent longer. The trip duration is the
+      only hard time constraint.
   urban_duration_max:
     value: 8
     unit: min
-    rationale: Longest urban segment between two delivery stops.
+    rationale: >-
+      Longest urban segment between two delivery stops.
+      Nominal duration at the target speed: the segment length is target speed times this
+      duration; curves and stops make the time actually spent longer. The trip duration is the
+      only hard time constraint.
   urban_grade_max:
     value: 2
     unit: "%"
@@ -53,7 +61,10 @@ urban:
   urban_turns_per_km:
     value: 2
     unit: 1/km
-    rationale: Junction turns per kilometre in town.
+    rationale: >-
+      Junction turns per kilometre of free road (rate of the exponential gap from the end of one
+      event to the start of the next). Events per kilometre of road come out lower, since events
+      take road length and a curve that would overflow its segment is dropped.
   urban_turn_angle:
     value: 90
     unit: deg
@@ -72,7 +83,9 @@ urban:
   urban_traffic_stops_per_km:
     value: 1
     unit: 1/km
-    rationale: Traffic lights and give-way stops per kilometre; adds braking events in town.
+    rationale: >-
+      Traffic lights and give-way stops per kilometre of free road (same convention as
+      urban_turns_per_km; the two urban event kinds form one merged process); adds braking events.
   traffic_stop_min:
     value: 10
     unit: s
@@ -106,11 +119,19 @@ rural:
   rural_duration_min:
     value: 5
     unit: min
-    rationale: Shortest rural segment.
+    rationale: >-
+      Shortest rural segment.
+      Nominal duration at the target speed: the segment length is target speed times this
+      duration; curves and stops make the time actually spent longer. The trip duration is the
+      only hard time constraint.
   rural_duration_max:
     value: 15
     unit: min
-    rationale: Longest rural segment (depot to delivery area).
+    rationale: >-
+      Longest rural segment (depot to delivery area).
+      Nominal duration at the target speed: the segment length is target speed times this
+      duration; curves and stops make the time actually spent longer. The trip duration is the
+      only hard time constraint.
   rural_grade_max:
     value: 3
     unit: "%"
@@ -118,7 +139,8 @@ rural:
   rural_bends_per_km:
     value: 1.5
     unit: 1/km
-    rationale: Bends per kilometre on a rural road.
+    rationale: >-
+      Bends per kilometre of free road on a rural road (same convention as urban_turns_per_km).
   rural_bend_radius_min:
     value: 150
     unit: m
@@ -150,11 +172,19 @@ downhill:
   downhill_duration_min:
     value: 2
     unit: min
-    rationale: Shortest sustained descent.
+    rationale: >-
+      Shortest sustained descent.
+      Nominal duration at the target speed: the segment length is target speed times this
+      duration; curves and stops make the time actually spent longer. The trip duration is the
+      only hard time constraint.
   downhill_duration_max:
     value: 5
     unit: min
-    rationale: Longest sustained descent.
+    rationale: >-
+      Longest sustained descent.
+      Nominal duration at the target speed: the segment length is target speed times this
+      duration; curves and stops make the time actually spent longer. The trip duration is the
+      only hard time constraint.
   downhill_grade_min:
     value: 7
     unit: "%"
@@ -173,7 +203,8 @@ downhill:
   downhill_bends_per_km:
     value: 2
     unit: 1/km
-    rationale: Bends per kilometre on a mountain or hill road.
+    rationale: >-
+      Bends per kilometre of free road on a hill road (same convention as urban_turns_per_km).
   downhill_bend_radius_min:
     value: 100
     unit: m

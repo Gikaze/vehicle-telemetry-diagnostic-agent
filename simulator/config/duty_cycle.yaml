@@ -50,7 +50,11 @@ shift:
   shift_end_latest:
     value: 18.5
     unit: h
-    rationale: Latest return to the depot (18:30).
+    rationale: >-
+      Latest return to the depot (18:30), a hard limit. Each trip may overrun its planned duration
+      by a bounded time (final stop moved past a curve, tracking); the end is therefore drawn in
+      [shift_end_earliest, shift_end_latest - trips_max * overrun bound], the bound being computed
+      by the loader from the drive profile and the vehicle model.
   trips_min:
     value: 4
     unit: trips
