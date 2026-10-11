@@ -63,13 +63,18 @@ chassis codes are manufacturer-specific in practice, so the simulator uses **fic
 Updated every `DT = 0.1 s`. Parameters (wheelbase, track, steering ratio, thermal constants) live in a per-model
 configuration, with small per-vehicle variation so no two vans are identical.
 
+**Reference point:** the centre of the rear axle. The speed `v`, the road curvature `κ` and the curve speed law
+`v_c = sqrt(a_lat,curve · R)` are taken there; the kinematic single-track model then gives the road-wheel angle
+`δ = atan(L · κ)` (no tyre slip angles at low lateral acceleration).
+
 | Signal | Law | Coupled to |
 | --- | --- | --- |
 | Speed `v` | Approaches the segment target with bounded acceleration and deceleration; `v ≥ 0` | Drive profile |
 | Longitudinal accel | Derivative of `v` | Speed |
 | Brake pressure, pedal | Non-zero when deceleration exceeds what drag and engine braking provide | Longitudinal accel |
-| Yaw rate | Single-track model: `v · δ / (i_s · L)` at low lateral acceleration (`δ` road-wheel angle from steering wheel angle, `i_s` steering ratio, `L` wheelbase) | Speed, steering angle |
-| Lateral accel | `v · yaw_rate` | Speed, yaw rate |
+| Steering wheel angle and rate | Angle `i_s · δ` (`i_s` steering ratio); rate = angle change over the step / `DT`, like the longitudinal acceleration | Road curvature |
+| Yaw rate | Single-track model: `v · tan(δ) / L = v · κ` at low lateral acceleration (`δ` road-wheel angle, `L` wheelbase) | Speed, steering angle |
+| Lateral accel | `v · yaw_rate`, sensor at the reference point (section 8) | Speed, yaw rate |
 | Wheel speeds | `v` plus a cornering offset proportional to `yaw_rate · track / 2` (outer wheels faster), plus slip under hard braking, plus sensor noise | Speed, yaw rate, brake pressure |
 | Reference speed | **Estimated from wheel speeds** (not copied from true `v`), as an ESC does | Wheel speeds |
 | Disc temperature (×4) | First-order: heats in proportion to braking energy shared per axle, cools exponentially, faster with speed | Brake pressure, speed, ambient |
@@ -177,6 +182,19 @@ Confirmation thresholds are simulator parameters, not values taken from any real
   knowledge; they are listed with their rationale in `simulator/config/` and are not calibrated against any
   real vehicle.
 - The single-track model is used at low lateral acceleration only; the simulator does not reproduce limit handling.
+- The inertial sensor cluster (`accel_long`, `accel_lat`, `yaw_rate`) sits at the reference point, the rear axle
+  centre, so `accel_lat = v · yaw_rate` and `accel_long = dv/dt` hold exactly. A real cluster sits near the
+  centre of gravity, a distance `x` ahead of the rear axle (about 1.5 m laden to 2.0 m empty with the model's
+  axle loads), and would read `a_y = v · ψ̇ + x · ψ̈` and `a_x = dv/dt − x · ψ̇²`. The worst case of the drive
+  profile is the tightest curve (`urban_turn_radius_min` = 10 m at its curve speed 4.47 m/s, `ψ̇` = 0.447 rad/s)
+  with the shortest curvature ramp: `curve_transition_time_min` = 2 s (the cap `R · angle / v` is never shorter,
+  at least 2.47 s for downhill bends), so `ψ̈ = v / (R · t)` = 0.224 rad/s². The extra terms then reach 0.34 to
+  0.44 m/s² on `a_y` on the ramps and −0.30 to −0.40 m/s² on `a_x` in the arc.
+- No pull-away happens inside a curve: trip starts and intermediate stops are at least `event_min_spacing`
+  (50 m) away from any curve; the final stop can sit at a curve's end, but ignition goes off there. A van
+  at rest therefore never steers. This is a property of the drive profile, not of the steering law, which only
+  guarantees a zero steering rate in a step where the van does not move: a van pulling away inside a curve ramp
+  would turn the wheel from rest, and a real driver may steer at standstill, which the profile never does.
 - Brake disc temperature is an uncalibrated first-order estimate.
 - The reference speed is a simple estimate from wheel speeds.
 - Fault codes carry a subset of the UDS status bits with a simple cycle-based debounce; UDS services, freeze
