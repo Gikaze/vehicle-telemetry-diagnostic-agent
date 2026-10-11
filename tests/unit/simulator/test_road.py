@@ -160,7 +160,7 @@ def _long_roads(count: int = 60):
 
 
 def test_drawn_gaps_follow_the_configured_rate() -> None:
-    """Mean drawn gap per segment kind is 1 / rate within 4 standard errors (exponential)."""
+    """Each gap is event_min_spacing plus an exponential part of mean 1 / rate (4 std errors)."""
     gaps: dict[str, list[float]] = {"urban": [], "rural": [], "downhill": []}
     for r in _long_roads():
         for plan in r.plans:
@@ -168,8 +168,12 @@ def test_drawn_gaps_follow_the_configured_rate() -> None:
     for kind, values in gaps.items():
         curve_rate, stop_rate = configured_rates(kind)
         mean = 1.0 / (curve_rate + stop_rate)
+        exponential_part = np.asarray(values) - drive_profile().si("event_min_spacing")
+        assert exponential_part.min() >= 0
         assert len(values) > 500
-        assert np.mean(values) == pytest.approx(mean, abs=4 * mean / math.sqrt(len(values)))
+        assert np.mean(exponential_part) == pytest.approx(
+            mean, abs=4 * mean / math.sqrt(len(values))
+        )
 
 
 def test_events_per_km_of_road_are_below_the_free_road_rate() -> None:

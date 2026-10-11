@@ -8,10 +8,12 @@ it was generated, nor on any other trip.
 Per segment the draws are: kind (by weight), target speed, nominal duration, grade; then the event
 process; then, for urban segments, the delivery stop draws. The segment length is target speed
 times nominal duration. Events follow a Poisson process in distance: each gap from the end of the
-previous event is exponential with the per-km-of-free-road rate; a gap that overflows the segment
-ends its events. Urban turns and traffic stops form one merged process. A curve that would
-overflow its segment is dropped (its draws are still consumed), so events never cross a segment
-boundary, never overlap, and stops never fall inside a curve.
+previous event is event_min_spacing plus an exponential draw at the per-km-of-free-road rate; an
+event closer than event_min_spacing to the segment end ends the segment's events, so the delivery
+stop at the segment end is also spaced from the last event. Urban turns and traffic stops form
+one merged process. A curve that would overflow its segment is dropped (its draws are still
+consumed), so events never cross a segment boundary, never overlap, and stops never fall inside
+a curve.
 
 A curve has entry and exit ramps where curvature changes linearly, and a constant-curvature arc.
 The ramp time is drawn, then shortened so that both ramps together turn no more than the curve
@@ -218,16 +220,17 @@ def _draw_events(
     gaps: list[float] = []
     if total_rate <= 0:
         return curves, stops, gaps
+    spacing = profile.si("event_min_spacing")
     cursor = segment.start
     while True:
-        gap = float(rng.exponential(1.0 / total_rate))
+        gap = spacing + float(rng.exponential(1.0 / total_rate))
         gaps.append(gap)
         position = cursor + gap
-        if position >= segment.end:
+        if position > segment.end - spacing:
             return curves, stops, gaps
         if rng.random() < curve_rate / total_rate:
             curve = _draw_curve(rng, profile, segment, position)
-            if curve.end > segment.end:
+            if curve.end > segment.end - spacing:
                 return curves, stops, gaps
             curves.append(curve)
             cursor = curve.end

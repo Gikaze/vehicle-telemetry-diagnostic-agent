@@ -57,3 +57,15 @@ coolant:
     value: 95
     unit: degC
     rationale: Upper edge of the regulated band (thermostat 90 degC plus at most 4 K at full load).
+
+driving:
+  approach_decel_tolerance:
+    value: 0.2
+    unit: m/s2
+    rationale: >-
+      Allowed excess of the deceleration over approach_decel in normal driving (true state),
+      giving a 1.7 m/s2 limit. Approaches command the constant deceleration that meets the
+      constraint from the current state: approach_decel on the plan, slightly more right after a
+      ramp-to-approach transition, which the one-step-ahead choice of the active term keeps small
+      (1.501 m/s2 measured over 180 trips of 30 min); setting the speed to 0 at a stop decelerates
+      at most stop_speed_threshold / 0.1 s = 1 m/s2.

@@ -9,11 +9,17 @@
 # for every upcoming constraint at s_c (curve speed v_c, or 0 at a stop), and after a curve or a
 # stop sqrt(v_end^2 + 2 * pull_away_accel * (s - s_end)). Curve speed couples radius and speed:
 #   v_c = min(v_segment, sqrt(curve_lateral_accel * R)), so v^2 / R stays below accel_lat_max.
-# The van tracks v_ref with feed-forward: a = a_ref + speed_tracking_gain * (v_ref - v), clipped to
-# [-decel_service_max, accel_max], where a_ref is the slope of the plan (-approach_decel on an
-# approach, +pull_away_accel when pulling away). Without a_ref the lag on a ramp would be
-# a / gain = 3 m/s. Below stop_speed_threshold with a stop ahead, the speed is set to 0 and the
-# brake is held for the stop duration.
+# Commanded acceleration, clipped to [-decel_service_max, min(accel_max, engine power limit)]:
+# - on an approach (an envelope is the lowest term), the constant deceleration that meets the
+#   constraint exactly from the current state, -(v^2 - v_c^2) / (2 * (s_c - s)): it equals
+#   -approach_decel on the plan and is integrated exactly, so stops are met at their position;
+# - otherwise a = a_ref + speed_tracking_gain * (v_ref - v), with a_ref = pull_away_accel * v /
+#   v_ref on the pull-away ramp (0 on a constant limit); without a_ref the ramp lag would be
+#   a / gain = 3 m/s.
+# The active term is chosen one 0.1 s step ahead. Events are at least event_min_spacing apart.
+# Below stop_speed_threshold at a stop, the speed is set to 0 and the brake is held for the stop
+# duration. When the trip time runs out during a stop, or with a stop before the stopping point,
+# that stop becomes the final stop.
 
 segments:
   weight_urban:
@@ -58,13 +64,23 @@ urban:
     value: 2
     unit: "%"
     rationale: Urban streets are nearly flat; grade drawn uniformly in +/- this value.
+  event_min_spacing:
+    value: 50
+    unit: m
+    rationale: >-
+      Minimum road length between two events (curve, traffic stop, delivery stop) and between the
+      last event of a segment and the segment end: an urban block. Each gap is this spacing plus an
+      exponential draw. Without it, two stops could be centimetres apart, which a van cannot drive
+      at the planned rates (pulling away at 1.2 m/s2 and stopping at 1.5 m/s2 within 50 m reaches
+      about 8 m/s).
   urban_turns_per_km:
     value: 2
     unit: 1/km
     rationale: >-
-      Junction turns per kilometre of free road (rate of the exponential gap from the end of one
-      event to the start of the next). Events per kilometre of road come out lower, since events
-      take road length and a curve that would overflow its segment is dropped.
+      Junction turns per kilometre of free road: rate of the exponential part of the gap from the
+      end of one event to the start of the next (the gap is event_min_spacing plus that part).
+      Events per kilometre of road come out lower, since events and spacings take road length and
+      a curve that would overflow its segment is dropped.
   urban_turn_angle:
     value: 90
     unit: deg

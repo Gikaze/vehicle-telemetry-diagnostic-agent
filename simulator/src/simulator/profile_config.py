@@ -84,6 +84,7 @@ DRIVE_PROFILE_LAYOUT = Layout(
             "delivery_stop_probability",
             "delivery_stop_min",
             "delivery_stop_max",
+            "event_min_spacing",
             "curve_lateral_accel",
             "approach_decel",
             "pull_away_accel",

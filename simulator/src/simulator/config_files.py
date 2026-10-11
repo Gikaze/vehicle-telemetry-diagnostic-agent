@@ -138,6 +138,7 @@ PLAUSIBILITY_LAYOUT = Layout(
             "disc_ratio_min_rear_rise",
             "coolant_rate_max",
             "coolant_band_max",
+            "approach_decel_tolerance",
         }
     ),
 )
