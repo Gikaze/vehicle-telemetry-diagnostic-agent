@@ -9,6 +9,7 @@ Anything else is rejected, so a bare `wheelbase: 3.6` or a partial `wheelbase: {
 passes as structure, and a parameter without a rationale never loads.
 """
 
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,6 +20,41 @@ import yaml
 from simulator.paths import simulator_home
 
 PARAMETER_KEYS = frozenset({"value", "unit", "rationale"})
+
+# Every unit a parameter may use, with its factor to SI. None: no plain factor (offset or
+# non-SI scale), so `Config.si` refuses to convert it and the code uses the value as stated.
+UNIT_FACTORS: dict[str, float | None] = {
+    "-": 1.0,
+    "%": 0.01,
+    "trips": 1.0,
+    "vehicles": 1.0,
+    "kg": 1.0,
+    "m": 1.0,
+    "m2": 1.0,
+    "s": 1.0,
+    "min": 60.0,
+    "h": 3600.0,
+    "m/s": 1.0,
+    "km/h": 1 / 3.6,
+    "m/s2": 1.0,
+    "1/s": 1.0,
+    "1/km": 0.001,
+    "1/(m/s2)": 1.0,
+    "deg": math.pi / 180,
+    "deg/s": math.pi / 180,
+    "W": 1.0,
+    "J/K": 1.0,
+    "K": 1.0,
+    "K/s": 1.0,
+    "Nm": 1.0,
+    "Nm/deg": 180 / math.pi,
+    "Nm/(deg/s)": 180 / math.pi,
+    "Nm/(m/s2)": 1.0,
+    "bar": 1e5,
+    "bar/(m/s2)": 1e5,
+    "degC": None,
+    "rpm": None,
+}
 
 Path_ = tuple[str, ...]
 
@@ -49,6 +85,16 @@ class Config:
 
     def value(self, name: str) -> Any:
         return self.parameters[name].value
+
+    def si(self, name: str) -> float:
+        """The parameter's value converted to SI with UNIT_FACTORS (scalars only)."""
+        parameter = self.parameters[name]
+        factor = UNIT_FACTORS[parameter.unit]
+        if factor is None:
+            raise ConfigError(f"{name}: unit {parameter.unit} has no plain SI factor")
+        if isinstance(parameter.value, list):
+            raise ConfigError(f"{name}: si() converts scalars only")
+        return float(parameter.value) * factor
 
 
 def config_path(name: str) -> Path:
@@ -114,6 +160,8 @@ def _parameter(node: Mapping[str, Any], where: str) -> Parameter:
     for field in ("unit", "rationale"):
         if not isinstance(node[field], str) or not node[field].strip():
             raise ConfigError(f"{where}: the {field} must be non-empty text")
+    if node["unit"] not in UNIT_FACTORS:
+        raise ConfigError(f"{where}: unknown unit {node['unit']!r} (see UNIT_FACTORS)")
     value = node["value"]
     numbers = value if isinstance(value, list) else [value]
     if not numbers or not all(_is_number(item) for item in numbers):

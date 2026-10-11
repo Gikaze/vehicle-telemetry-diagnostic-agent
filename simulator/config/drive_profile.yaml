@@ -1,0 +1,236 @@
+# Drive profile: how a trip is composed and driven. Every parameter is {value, unit, rationale}.
+#
+# A trip is a sequence of segments (urban, rural, downhill) drawn by weight from the vehicle's
+# PROFILE stream; each segment has a target speed, a duration and a grade, and contains straight
+# sections, curves and stops. Urban segments may be followed by a delivery stop (ignition on).
+#
+# Speed planning (spec section 4): the driver plans a reference speed along the road,
+#   v_ref(s) = min(v_segment, sqrt(v_c^2 + 2 * approach_decel * (s_c - s)), ...)
+# for every upcoming constraint at s_c (curve speed v_c, or 0 at a stop), and after a curve or a
+# stop sqrt(v_end^2 + 2 * pull_away_accel * (s - s_end)). Curve speed couples radius and speed:
+#   v_c = min(v_segment, sqrt(curve_lateral_accel * R)), so v^2 / R stays below accel_lat_max.
+# The van tracks v_ref with feed-forward: a = a_ref + speed_tracking_gain * (v_ref - v), clipped to
+# [-decel_service_max, accel_max], where a_ref is the slope of the plan (-approach_decel on an
+# approach, +pull_away_accel when pulling away). Without a_ref the lag on a ramp would be
+# a / gain = 3 m/s. Below stop_speed_threshold with a stop ahead, the speed is set to 0 and the
+# brake is held for the stop duration.
+
+segments:
+  weight_urban:
+    value: 0.6
+    unit: "-"
+    rationale: Share of urban segments; delivery rounds are mostly in town.
+  weight_rural:
+    value: 0.3
+    unit: "-"
+    rationale: Share of rural segments (between the depot and the delivery areas).
+  weight_downhill:
+    value: 0.1
+    unit: "-"
+    rationale: Share of sustained descents, the main source of disc heating.
+
+urban:
+  urban_target_speed_min:
+    value: 30
+    unit: km/h
+    rationale: Lowest cruising speed in town (30 km/h zones).
+  urban_target_speed_max:
+    value: 50
+    unit: km/h
+    rationale: Usual urban speed limit.
+  urban_duration_min:
+    value: 2
+    unit: min
+    rationale: Shortest urban segment.
+  urban_duration_max:
+    value: 8
+    unit: min
+    rationale: Longest urban segment between two delivery stops.
+  urban_grade_max:
+    value: 2
+    unit: "%"
+    rationale: Urban streets are nearly flat; grade drawn uniformly in +/- this value.
+  urban_turns_per_km:
+    value: 2
+    unit: 1/km
+    rationale: Junction turns per kilometre in town.
+  urban_turn_angle:
+    value: 90
+    unit: deg
+    rationale: Turn at a junction.
+  urban_turn_radius_min:
+    value: 10
+    unit: m
+    rationale: >-
+      Tightest junction turn. The loader checks it is reachable within the steering lock
+      (R >= wheelbase * steering_ratio / lock, about 6.5 m) and within the steering rate limit
+      over the shortest curvature transition.
+  urban_turn_radius_max:
+    value: 25
+    unit: m
+    rationale: Widest junction turn; curve speeds 16 to 25 km/h at curve_lateral_accel.
+  urban_traffic_stops_per_km:
+    value: 1
+    unit: 1/km
+    rationale: Traffic lights and give-way stops per kilometre; adds braking events in town.
+  traffic_stop_min:
+    value: 10
+    unit: s
+    rationale: Shortest traffic stop.
+  traffic_stop_max:
+    value: 40
+    unit: s
+    rationale: Longest traffic stop (a red light cycle).
+  delivery_stop_probability:
+    value: 0.7
+    unit: "-"
+    rationale: Probability that an urban segment ends with a delivery stop.
+  delivery_stop_min:
+    value: 30
+    unit: s
+    rationale: Shortest delivery stop, ignition on, engine idling (decision of the M1 plan).
+  delivery_stop_max:
+    value: 180
+    unit: s
+    rationale: Longest delivery stop.
+
+rural:
+  rural_target_speed_min:
+    value: 60
+    unit: km/h
+    rationale: Lowest cruising speed on rural roads.
+  rural_target_speed_max:
+    value: 90
+    unit: km/h
+    rationale: Usual rural speed limit for a light commercial vehicle.
+  rural_duration_min:
+    value: 5
+    unit: min
+    rationale: Shortest rural segment.
+  rural_duration_max:
+    value: 15
+    unit: min
+    rationale: Longest rural segment (depot to delivery area).
+  rural_grade_max:
+    value: 3
+    unit: "%"
+    rationale: Rolling country; grade drawn uniformly in +/- this value.
+  rural_bends_per_km:
+    value: 1.5
+    unit: 1/km
+    rationale: Bends per kilometre on a rural road.
+  rural_bend_radius_min:
+    value: 150
+    unit: m
+    rationale: Tightest rural bend; curve speed about 62 km/h at curve_lateral_accel.
+  rural_bend_radius_max:
+    value: 600
+    unit: m
+    rationale: Widest bend that still needs steering input.
+  rural_bend_angle_min:
+    value: 20
+    unit: deg
+    rationale: Smallest heading change of a bend.
+  rural_bend_angle_max:
+    value: 90
+    unit: deg
+    rationale: Largest heading change of a bend.
+
+downhill:
+  downhill_target_speed_min:
+    value: 40
+    unit: km/h
+    rationale: Lowest speed held on a descent.
+  downhill_target_speed_max:
+    value: 60
+    unit: km/h
+    rationale: >-
+      Highest speed held on a descent. With the smallest grade, drag at this speed is what most
+      reduces the brake force, so the loader checks braking is still needed here (see below).
+  downhill_duration_min:
+    value: 2
+    unit: min
+    rationale: Shortest sustained descent.
+  downhill_duration_max:
+    value: 5
+    unit: min
+    rationale: Longest sustained descent.
+  downhill_grade_min:
+    value: 7
+    unit: "%"
+    rationale: >-
+      Smallest descent. Braking is needed only if the grade force exceeds engine braking, rolling
+      resistance and drag: at 4 % a laden van at 55 km/h needs no brakes (grade 1293 N < 1826 N).
+      The loader checks the brake force is positive in the worst case: smallest grade, highest
+      downhill speed, empty van, coldest ambient (densest air): +192 N here, -32 N at 6 %.
+  downhill_grade_max:
+    value: 10
+    unit: "%"
+    rationale: >-
+      Steepest descent. Check: laden van (3300 kg) at 55 km/h on 10 % at 20 degC needs 21.3 kW of
+      brake power, 6.7 kW per front disc; with tau(15.3 m/s) = 182 s the disc rises by about
+      267 K after 5 min (steady 331 K), about 290 degC: plausible for a long descent.
+  downhill_bends_per_km:
+    value: 2
+    unit: 1/km
+    rationale: Bends per kilometre on a mountain or hill road.
+  downhill_bend_radius_min:
+    value: 100
+    unit: m
+    rationale: Tightest bend on a descent; curve speed about 51 km/h at curve_lateral_accel.
+  downhill_bend_radius_max:
+    value: 300
+    unit: m
+    rationale: Widest bend on a descent.
+  downhill_bend_angle_min:
+    value: 20
+    unit: deg
+    rationale: Smallest heading change of a bend.
+  downhill_bend_angle_max:
+    value: 120
+    unit: deg
+    rationale: Largest heading change of a bend (hairpins excluded).
+
+driver:
+  curve_lateral_accel:
+    value: 2.0
+    unit: m/s2
+    rationale: >-
+      Lateral acceleration the driver aims for in curves (comfortable driving of a laden van);
+      sets the curve speed v_c = sqrt(curve_lateral_accel * R). The loader requires it below
+      accel_lat_max, leaving margin for the tracking error at the curve entry.
+  approach_decel:
+    value: 1.5
+    unit: m/s2
+    rationale: >-
+      Deceleration planned before curves and stops (comfortable braking); must not exceed
+      decel_service_max.
+  pull_away_accel:
+    value: 1.2
+    unit: m/s2
+    rationale: >-
+      Acceleration planned when pulling away after a curve or a stop; must not exceed accel_max.
+      The engine power limit may cap it at speed (the pedal then saturates).
+  curve_transition_time_min:
+    value: 2
+    unit: s
+    rationale: >-
+      Shortest linear curvature ramp at curve entry and exit. The loader checks the steering-wheel
+      rate it needs at the tightest turn stays below steering_wheel_rate_max.
+  curve_transition_time_max:
+    value: 4
+    unit: s
+    rationale: Longest curvature ramp.
+  stop_speed_threshold:
+    value: 0.1
+    unit: m/s
+    rationale: >-
+      Below this speed, with a stop ahead, the speed is set to 0 (the van comes to rest). Setting
+      it to 0 within one 0.1 s step implies at most threshold / 0.1 s = 1 m/s2, which the loader
+      checks against approach_decel.
+  standstill_brake_pressure:
+    value: 10
+    unit: bar
+    rationale: >-
+      Brake pressure the driver holds while stopped (ignition on); must exceed the brake switch
+      pressure so brake_pedal_pressed is reported.

@@ -1,0 +1,95 @@
+# Daily duty cycle of a delivery van, and the ambient conditions of the simulated day.
+#
+# Every parameter is {value, unit, rationale}. Times of day are in hours (6.5 = 06:30).
+# Ambient conditions are common to the fleet and drawn from a fleet stream; the day plan of each
+# vehicle is drawn from that vehicle's SCHEDULE stream.
+#
+# Day plan: draw the shift start and the shift end, the number of trips, then the breaks between
+# trips (one lunch break after trip ceil(n / 2), short breaks elsewhere); the remaining time is
+# split between the trips in proportion to weights drawn uniformly in 1 +/- trip_weight_spread.
+# One trip is one operation cycle (ignition on to ignition off), which drives the DTC debounce of
+# FR-18. Delivery stops within a trip keep the ignition on (drive_profile.yaml).
+
+ambient:
+  ambient_temp_min:
+    value: -5
+    unit: degC
+    rationale: >-
+      Lower bound of the uniform draw of the day's ambient temperature. The range -5..30 degC
+      represents daily mean temperatures over a whole year in a temperate lowland climate (central
+      or western Europe, no specific place). Limits (spec section 8): no diurnal cycle, the uniform
+      draw over-weights the extremes, and one fleet run tests one ambient value; invariant tests
+      cover the whole range.
+  ambient_temp_max:
+    value: 30
+    unit: degC
+    rationale: Upper bound of the same draw; see ambient_temp_min.
+  atmospheric_pressure:
+    value: 1.013
+    unit: bar
+    rationale: >-
+      Low altitude, hilly terrain (standard sea-level pressure, constant all day). Altitude is not
+      tracked: descents (drive_profile.yaml) are not balanced by climbs (spec section 8). Air
+      density is computed from this pressure:
+      rho = p / (R_dry_air * T_ambient), i.e. 1.316 kg/m3 at -5 degC and 1.164 kg/m3 at 30 degC
+      (a fixed 1.2 kg/m3 corresponds to about 20 degC: +10 % and -3 % errors at the range ends).
+
+shift:
+  shift_start_earliest:
+    value: 6.5
+    unit: h
+    rationale: Earliest departure from the depot (06:30).
+  shift_start_latest:
+    value: 7.5
+    unit: h
+    rationale: Latest departure from the depot (07:30).
+  shift_end_earliest:
+    value: 16.0
+    unit: h
+    rationale: Earliest return to the depot (16:00); the end of the last trip.
+  shift_end_latest:
+    value: 18.5
+    unit: h
+    rationale: Latest return to the depot (18:30).
+  trips_min:
+    value: 4
+    unit: trips
+    rationale: Fewest operation cycles in a day (loading rounds and the lunch break split the day).
+  trips_max:
+    value: 6
+    unit: trips
+    rationale: Most operation cycles in a day.
+  short_break_min:
+    value: 10
+    unit: min
+    rationale: Shortest ignition-off break between trips (reloading, short pause).
+  short_break_max:
+    value: 20
+    unit: min
+    rationale: Longest short break.
+  lunch_break_min:
+    value: 30
+    unit: min
+    rationale: Shortest lunch break, ignition off, after trip ceil(n / 2).
+  lunch_break_max:
+    value: 45
+    unit: min
+    rationale: Longest lunch break.
+  trip_weight_spread:
+    value: 0.3
+    unit: "-"
+    rationale: >-
+      The driving time is split between trips in proportion to weights drawn uniformly in
+      1 +/- 0.3, so trips differ in length without extreme imbalance.
+  trip_duration_min:
+    value: 30
+    unit: min
+    rationale: >-
+      Shortest plausible trip. The loader checks that the worst case of the draws (latest start,
+      earliest end, most trips, longest breaks, smallest weight) still gives at least this.
+  trip_duration_max:
+    value: 270
+    unit: min
+    rationale: >-
+      Longest plausible trip without an ignition-off break. The loader checks the opposite worst
+      case (earliest start, latest end, fewest trips, shortest breaks, largest weight).
