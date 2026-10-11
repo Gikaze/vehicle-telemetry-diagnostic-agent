@@ -16,7 +16,7 @@ from simulator.model.longitudinal import (
     traction_force_limit,
 )
 from simulator.profile.road import Road, StopKind
-from simulator.profile.speed_plan import DriverParameters
+from simulator.profile.speed_plan import DriverParameters, SpeedPlanner
 from simulator.profile_config import drive_profile, trip_overrun_bound
 
 STOP_TOLERANCE = 0.05  # m: a van stops within 5 cm of a stop's position
@@ -128,6 +128,46 @@ def test_power_needed_to_pull_away(speed_value: float, power_kw: float) -> None:
         np.array([1.2]), speed, np.zeros(1), np.array([3300.0]), density, longitudinal
     )
     assert float(forces.engine[0] * speed[0]) / 1000 == pytest.approx(power_kw, abs=0.1)
+
+
+def planner_at_rest_before_stop(gap: float) -> SpeedPlanner:
+    """A van at v = 0 on the approach to a stop `gap` metres ahead, no other term binding."""
+    _, profile, driver, _ = configs()
+    planner = SpeedPlanner([Road(7, "VAN-001", 0, 0, profile)], [600.0], driver)
+    planner.segment_speed[:] = 10.0
+    planner.curve_speed[:] = np.inf
+    planner.ramp_position[:], planner.ramp_speed[:] = 0.0, 10.0
+    planner.window_position[:] = np.inf
+    planner.window_speed[:] = np.inf
+    planner.window_position[0, 0], planner.window_speed[0, 0] = 100.0 + gap, 0.0
+    planner.next_stop_position[0] = 100.0 + gap
+    planner.next_stop_duration[0] = 30.0
+    return planner
+
+
+def test_van_at_rest_short_of_a_stop_moves_up_to_it() -> None:
+    """v = 0 with a stop 5 cm ahead (beyond the capture distance): the van must not stay put.
+
+    The exact approach law alone asks -(0 - 0) / (2 gap) = 0 there, which would hold the van
+    at rest forever; the state is not shown unreachable, so the command must handle it.
+    """
+    _, profile, driver, _ = configs()
+    planner = planner_at_rest_before_stop(0.05)
+    s, v = np.array([100.0]), np.array([0.0])
+    _, accel = planner.command(s, v)
+    assert accel[0] > 0
+    # Driven on, it reaches the stop and is captured there within a few steps.
+    for _ in range(50):
+        _, accel = planner.command(s, v)
+        v_next = np.maximum(v + accel * PHYSICS_DT, 0.0)
+        s_next = s + (v + v_next) / 2 * PHYSICS_DT
+        planner.advance_time()
+        v_next = planner.apply_stops(s_next, v_next, v)
+        s, v = s_next, v_next
+        if planner.stopped[0]:
+            break
+    assert planner.stopped[0]
+    assert abs(s[0] - 100.05) <= driver.stop_speed_threshold * PHYSICS_DT
 
 
 def test_power_limit_caps_acceleration_at_speed() -> None:

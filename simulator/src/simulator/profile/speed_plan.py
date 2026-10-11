@@ -271,7 +271,11 @@ class SpeedPlanner:
             choice == _RAMP_COLUMN, d.pull_away_accel * np.minimum(scale, 1.0), 0.0
         )
         tracking = ramp_rate + d.speed_tracking_gain * (v_ref - v)
-        return v_ref, np.where(approaching, required, tracking)
+        # At rest short of a constraint the exact law asks 0 and would hold the van there for good;
+        # not shown unreachable (rounding), so pull away towards it instead.
+        at_rest_short = approaching & (v == 0) & (gap > 0) & (required <= 0)
+        approach = np.where(at_rest_short, d.pull_away_accel, required)
+        return v_ref, np.where(approaching, approach, tracking)
 
     def update_events(self, s: np.ndarray, v: np.ndarray) -> None:
         """Bookkeeping for the vehicles whose road situation changed at this step."""
