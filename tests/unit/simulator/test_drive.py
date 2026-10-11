@@ -1,5 +1,7 @@
 """Speed plan and longitudinal driving (NFR-15): invariants on the true state of driven trips."""
 
+import dataclasses
+
 import numpy as np
 import pytest
 from hypothesis import given, settings
@@ -7,7 +9,7 @@ from hypothesis import strategies as st
 
 from simulator.config_files import plausibility, van_model
 from simulator.constants import PHYSICS_DT
-from simulator.model.drive import Trace, drive_trips
+from simulator.model.drive import Trace, drive_trips, step
 from simulator.model.forces import air_density
 from simulator.model.longitudinal import (
     LongitudinalParameters,
@@ -133,7 +135,7 @@ def test_power_needed_to_pull_away(speed_value: float, power_kw: float) -> None:
 def planner_at_rest_before_stop(gap: float) -> SpeedPlanner:
     """A van at v = 0 on the approach to a stop `gap` metres ahead, no other term binding."""
     _, profile, driver, _ = configs()
-    planner = SpeedPlanner([Road(7, "VAN-001", 0, 0, profile)], [600.0], driver)
+    planner = SpeedPlanner.for_trips([Road(7, "VAN-001", 0, 0, profile)], [600.0], driver)
     planner.segment_speed[:] = 10.0
     planner.curve_speed[:] = np.inf
     planner.ramp_position[:], planner.ramp_speed[:] = 0.0, 10.0
@@ -168,6 +170,113 @@ def test_van_at_rest_short_of_a_stop_moves_up_to_it() -> None:
             break
     assert planner.stopped[0]
     assert abs(s[0] - 100.05) <= driver.stop_speed_threshold * PHYSICS_DT
+
+
+def slot_state(planner: SpeedPlanner, i: int) -> dict:
+    """Every per-slot array of the planner, for slot i."""
+    return {
+        name: value[i]
+        for name, value in vars(planner).items()
+        if isinstance(value, np.ndarray) and value.shape[:1] == (planner.n,)
+    }
+
+
+def test_a_reused_slot_starts_like_a_fresh_planner() -> None:
+    """start_trip resets every per-slot state left by the previous trip of that slot."""
+    _, profile, driver, _ = configs()
+    planner = SpeedPlanner.for_trips([Road(7, "VAN-001", 0, 0, profile)], [600.0], driver)
+    # Leave state behind, as a trip that ended at a stop in a curve would.
+    planner.time[0], planner.stopped[0], planner.stop_until[0] = 812.3, True, 830.0
+    planner.final_inserted[0], planner.curve_speed[0], planner.curve_end[0] = True, 4.5, 950.0
+    planner.ramp_position[0], planner.ramp_speed[0] = 900.0, 3.0
+    planner.ended[0], planner.end_time[0] = True, 812.3
+    road = Road(7, "VAN-001", 0, 1, profile)
+    planner.start_trip(0, road, 900.0)
+    fresh = SpeedPlanner.for_trips([Road(7, "VAN-001", 0, 1, profile)], [900.0], driver)
+    reused, expected = slot_state(planner, 0), slot_state(fresh, 0)
+    assert reused.keys() == expected.keys()
+    assert {"time", "stopped", "window_position"} <= reused.keys()  # enumeration is not empty
+    for name, value in expected.items():
+        assert np.array_equal(reused[name], value, equal_nan=True), name
+    # The slot's Python-side trip state, field by field (the road compared by its content).
+    reused_trip, fresh_trip = planner.trips[0], fresh.trips[0]
+    assert reused_trip is not None and fresh_trip is not None
+    for name, value in vars(fresh_trip).items():
+        if name == "road":
+            assert reused_trip.road.plans == value.plans
+            assert reused_trip.road.final_stop == value.final_stop
+        else:
+            assert getattr(reused_trip, name) == value, name
+
+
+def drive_staggered(starts: list[int], trips: list[tuple[str, int]], duration: float = 300.0):
+    _, profile, driver, longitudinal = configs()
+    roads = [Road(7, vehicle, 0, trip, profile) for vehicle, trip in trips]
+    return drive_trips(
+        roads,
+        [duration] * len(roads),
+        [2800.0] * len(roads),
+        air_density(101300, 10.0),
+        longitudinal,
+        driver,
+        time_limit=duration + 2 * trip_overrun_bound(profile),
+        start_steps=starts,
+    )
+
+
+def same_trace(a: Trace, b: Trace) -> bool:
+    return all(
+        np.array_equal(getattr(a, f.name), getattr(b, f.name))
+        for f in dataclasses.fields(Trace)
+        if f.name != "start_step"
+    )
+
+
+@pytest.mark.parametrize("k", [1, 137, 1500])
+def test_a_trip_started_later_is_independent_and_shifted(k: int) -> None:
+    """Slot 1 starts at fleet step k while slot 0 drives: slot 0 is unchanged (bit for bit) and
+    slot 1 drives exactly as a fresh planner from step 0, shifted by k steps."""
+    trips = [("VAN-001", 1), ("VAN-002", 2)]
+    together = drive_staggered([0, k], trips)
+    alone_0 = drive_staggered([0], trips[:1])[0]
+    alone_1 = drive_staggered([0], trips[1:])[0]
+    assert together[1].start_step == k and alone_1.start_step == 0
+    assert same_trace(together[0], alone_0)
+    assert same_trace(together[1], alone_1)
+
+
+def test_empty_and_ended_slots_are_held_at_rest() -> None:
+    """Slot 0 drives and ends, slot 1 starts after that, slot 2 never starts: a slot without a
+    trip in progress has v = 0, a = 0, zero forces and reference speed, and nothing is NaN."""
+    _, profile, driver, longitudinal = configs()
+    planner = SpeedPlanner(3, driver)
+    mass, density = np.full(3, 2800.0), air_density(101300, 10.0)
+    s, v = np.zeros(3), np.zeros(3)
+    planner.start_trip(0, Road(7, "VAN-001", 0, 0, profile), 60.0)
+    seen_ended = False
+    for k in range(4000):
+        if k == 2500:
+            planner.start_trip(1, Road(7, "VAN-002", 0, 0, profile), 60.0)
+            s[1], v[1] = 0.0, 0.0
+        result = step(planner, s, v, mass, density, longitudinal)
+        for name in ("speed", "accel", "speed_ref", "grade", "engine_force", "brake_force"):
+            values = getattr(result, name)
+            assert np.all(np.isfinite(values)), name
+            assert np.all(values[~result.active] == 0), name
+        assert np.all(result.next_speed[~result.active] == 0)
+        assert np.array_equal(result.next_position[~result.active], s[~result.active])
+        seen_ended |= bool(k < 2500 and not result.active[0])
+        s, v = result.next_position, result.next_speed
+    assert seen_ended, "slot 0 must end before slot 1 starts"
+    assert planner.ended.all()
+    assert not result.active[2]
+
+
+def test_a_slot_with_a_trip_in_progress_cannot_start_another() -> None:
+    _, profile, driver, _ = configs()
+    planner = SpeedPlanner.for_trips([Road(7, "VAN-001", 0, 0, profile)], [600.0], driver)
+    with pytest.raises(RuntimeError, match="already has a trip in progress"):
+        planner.start_trip(0, Road(7, "VAN-001", 0, 1, profile), 600.0)
 
 
 def test_power_limit_caps_acceleration_at_speed() -> None:

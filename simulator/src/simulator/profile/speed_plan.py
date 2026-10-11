@@ -90,14 +90,17 @@ class _Trip:
 
 
 class SpeedPlanner:
-    """Reference speed, stop logic and trip end for trips driven at the same time."""
+    """Reference speed, stop logic and trip end for a fleet of vehicles, one trip at a time each.
 
-    def __init__(self, roads: list[Road], durations: list[float], driver: DriverParameters):
+    Each vehicle has a slot; `start_trip` starts a trip in a slot at any time, so vehicles start
+    their trips independently. A slot without a trip in progress counts as ended.
+    """
+
+    def __init__(self, n: int, driver: DriverParameters):
         self.driver = driver
-        self.trips = [_Trip(road=road) for road in roads]
-        n = len(self.trips)
         self.n = n
-        self.duration = np.asarray(durations, dtype=float)
+        self.trips: list[_Trip | None] = [None] * n
+        self.duration = np.zeros(n)
         self.time = np.zeros(n)  # s since the trip start
         self.segment_speed = np.zeros(n)
         self.grade = np.zeros(n)
@@ -109,7 +112,7 @@ class SpeedPlanner:
         self.stopped = np.zeros(n, dtype=bool)
         self.stop_until = np.zeros(n)
         self.final_inserted = np.zeros(n, dtype=bool)
-        self.ended = np.zeros(n, dtype=bool)
+        self.ended = np.ones(n, dtype=bool)
         self.end_time = np.full(n, np.nan)
         self.next_stop_position = np.full(n, np.inf)
         self.next_stop_duration = np.zeros(n)
@@ -118,14 +121,45 @@ class SpeedPlanner:
         self.window_position = np.full((n, self.window_k), np.inf)
         self.window_speed = np.full((n, self.window_k), np.inf)
         self.window_reach = np.zeros(n)  # the window holds every constraint before this position
-        for i in range(n):
-            self._enter_segment(i, 0.0, 0)
-            self._refresh(i, 0.0)
+
+    @classmethod
+    def for_trips(
+        cls, roads: list[Road], durations: list[float], driver: DriverParameters
+    ) -> "SpeedPlanner":
+        """A planner with trip i started in slot i (trips driven side by side from t = 0)."""
+        planner = cls(len(roads), driver)
+        for i, (road, duration) in enumerate(zip(roads, durations, strict=True)):
+            planner.start_trip(i, road, duration)
+        return planner
+
+    def start_trip(self, i: int, road: Road, duration: float) -> None:
+        """Start a trip in slot i: position 0 on `road`, at rest, planned `duration` in s."""
+        if not self.ended[i]:
+            raise RuntimeError(f"slot {i} already has a trip in progress")
+        self.trips[i] = _Trip(road=road)
+        self.duration[i] = duration
+        self.time[i] = 0.0
+        self.curve_speed[i] = np.inf
+        self.curve_end[i] = np.inf
+        self.ramp_position[i], self.ramp_speed[i] = 0.0, 0.0
+        self.stopped[i] = False
+        self.stop_until[i] = 0.0
+        self.final_inserted[i] = False
+        self.ended[i] = False
+        self.end_time[i] = np.nan
+        self._enter_segment(i, 0.0, 0)
+        self._refresh(i, 0.0)
+
+    def _trip(self, i: int) -> _Trip:
+        slot = self.trips[i]
+        if slot is None:
+            raise RuntimeError(f"slot {i} has no trip")
+        return slot
 
     # Python-side events -------------------------------------------------------------------------
 
     def _build(self, i: int, until: float) -> None:
-        trip = self.trips[i]
+        trip = self._trip(i)
         road = trip.road
         road.ensure(until)
         final = road.final_stop is not None
@@ -159,7 +193,7 @@ class SpeedPlanner:
         """Rebuild vehicle i's window with every constraint ahead within its horizon."""
         horizon_end = s + self.driver.horizon
         self._build(i, horizon_end + self.driver.horizon)
-        trip = self.trips[i]
+        trip = self._trip(i)
         pending = trip.constraints[trip.next_index :]
         ahead = [c for c in pending if c.position < horizon_end]
         if len(ahead) > self.window_k:
@@ -186,7 +220,7 @@ class SpeedPlanner:
         self.window_k = k
 
     def _enter_segment(self, i: int, s: float, index: int) -> None:
-        trip = self.trips[i]
+        trip = self._trip(i)
         trip.road.ensure(s + 1.0)
         index = min(index, len(trip.road.plans) - 1)
         trip.segment_index = index
@@ -196,7 +230,7 @@ class SpeedPlanner:
         self.segment_end[i] = segment.end
 
     def _pass_constraints(self, i: int, s: float) -> None:
-        trip = self.trips[i]
+        trip = self._trip(i)
         while trip.next_index < len(trip.constraints):
             constraint = trip.constraints[trip.next_index]
             if constraint.position > s or constraint.kind == STOP:
@@ -290,11 +324,12 @@ class SpeedPlanner:
             self.curve_end[i] = np.inf
             self.ramp_position[i], self.ramp_speed[i] = s[i], v[i]
         for i in np.flatnonzero(new_segment):
-            final = self.trips[i].road.final_stop
+            trip = self._trip(i)
+            final = trip.road.final_stop
             if final is not None and s[i] >= final.position:
                 self.segment_end[i] = np.inf
                 continue
-            self._enter_segment(i, s[i], self.trips[i].segment_index + 1)
+            self._enter_segment(i, s[i], trip.segment_index + 1)
             self.ramp_position[i], self.ramp_speed[i] = s[i], v[i]
         for i in np.flatnonzero(crossed | entering):
             self._pass_constraints(i, s[i])
@@ -304,7 +339,7 @@ class SpeedPlanner:
         remaining = self.duration - self.time
         due = ~self.final_inserted & ~self.ended & (remaining <= v / self.driver.approach_decel)
         for i in np.flatnonzero(due):
-            trip = self.trips[i]
+            trip = self._trip(i)
             self.final_inserted[i] = True
             if self.stopped[i]:
                 # Time runs out during a traffic or delivery stop: that stop becomes the final
@@ -345,7 +380,7 @@ class SpeedPlanner:
                 self.stop_until[i] = self.time[i] + self.next_stop_duration[i]
         release = self.stopped & ~self.ended & (self.time >= self.stop_until)
         for i in np.flatnonzero(release):
-            trip = self.trips[i]
+            trip = self._trip(i)
             while trip.next_index < len(trip.constraints):
                 passed = trip.constraints[trip.next_index]
                 trip.next_index += 1
