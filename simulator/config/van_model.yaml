@@ -294,18 +294,25 @@ ecu_logic:
       measured wheel speeds after two kinematic corrections, in this order: on the front axle,
       the projection onto the vehicle axis (times cos of the road-wheel angle from the measured
       steering angle), then the yaw term per wheel (+/- yaw_rate * track_width / 2).
-      Worst case in normal driving, over 0 to 90 km/h, empty and laden, combining at each speed
-      the tightest curve the drive profile allows (radius 10 m at 16.1 km/h, wider above), the
-      service braking limit or the largest traction force (accel_max plus the steepest climb,
-      rural_grade_max = 3 % in drive_profile.yaml, and the resistances, capped by engine power),
-      and 2 * 0.174 km/h of measurement error (wheel speed noise at 3 sigma and half resolution,
-      yaw rate and steering angle errors through the corrections). Conservative case,
-      tyre_slip_stiffness floor 15 and payload_rear_axle_share over 0.75 to 1.0: lowest ABS
-      margin 1.94 (share 1.0, laden van at 13.4 km/h, front slip 4.97 % against rear 1.76 %,
-      1.04 km/h or 7.7 %); lowest TCS margin 1.87 (empty van at 20.1 km/h, rear slip 3.63 %,
-      1.08 km/h or 5.4 %; the payload share does not matter). Nominal values (stiffness 19, share
-      0.88): ABS 2.26, TCS 2.18. Without the front-axle correction the front wheels would read
-      1.02 km/h above the rear ones in the 10 m curve.
+      Worst case in normal driving, per segment kind of drive_profile.yaml (urban, rural,
+      downhill), over its grades (urban_grade_max, rural_grade_max, downhill_grade_min..max up to
+      a 10 % descent), its speeds up to its highest target speed, and the tightest curve allowed
+      at each speed (its smallest radius, wider where the curve speed law requires), empty and
+      laden. Forces come from the longitudinal model: service braking (decel_service_max), where
+      the brakes supply what rolling resistance, drag and the full engine drag on the rear axle do
+      not, or the largest traction (accel_max or the engine power limit). Slips come from the
+      wheel model, then the corrections, the tyre radius bias (1 %) and 2 * 0.174 km/h of
+      measurement error (wheel speed noise at 3 sigma and half resolution, yaw rate and steering
+      angle errors through the corrections). Conservative case, tyre_slip_stiffness floor 15 and
+      payload_rear_axle_share over 0.75 to 1.0: lowest ABS margin 2.13 (urban, 2 % descent,
+      laden, share 1.0, 13.6 km/h in the 10 m curve: front slip 4.59 % against rear 1.66 %,
+      0.94 km/h or 7.1 %); lowest TCS margin 1.86 (rural, 3 % climb, empty, 20.1 km/h: rear slip
+      3.63 %, 1.08 km/h or 5.4 %). Downhill braking on a 10 % descent: ABS margin 2.35 (front
+      5.56 % against rear 1.92 % at 13.6 km/h). At speed the absolute difference exceeds 2 km/h
+      (2.54 km/h at 60 km/h on a 10 % descent, 2.98 km/h at 90 km/h on a 3 % descent, laden) while
+      the ratio stays at 4.3 % and 3.4 %: there the slip ratio threshold alone prevents a flag.
+      Nominal values (stiffness 19, share 0.88): ABS 2.55, TCS 2.17. Without the front-axle
+      correction the front wheels would read 1.02 km/h above the rear ones in the 10 m curve.
 
 tyres:
   tyre_pressure_nominal:

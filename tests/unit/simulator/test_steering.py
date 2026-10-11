@@ -4,15 +4,13 @@ import math
 
 import numpy as np
 import pytest
+from driven import drive_with_steering
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from simulator.catalogue import catalogue
 from simulator.config_files import van_model
 from simulator.constants import PHYSICS_DT
-from simulator.model.drive import drive_trips
-from simulator.model.forces import air_density
-from simulator.model.longitudinal import LongitudinalParameters
 from simulator.model.steering import (
     CurveTracker,
     SteeringParameters,
@@ -20,8 +18,7 @@ from simulator.model.steering import (
     steering_wheel_angle,
 )
 from simulator.profile.road import Road
-from simulator.profile.speed_plan import DriverParameters
-from simulator.profile_config import drive_profile, trip_overrun_bound
+from simulator.profile_config import drive_profile
 
 
 def road_curvature(road: Road, s: float) -> float:
@@ -151,37 +148,6 @@ def test_torques_while_driving(sign: int) -> None:
     assert np.sign(entry.assist_torque[0]) == sign
 
 
-def drive_with_steering(seed: int, trip: int, duration: float, ambient: float):
-    model, profile = van_model(), drive_profile()
-    vehicles = [f"VAN-{n:03d}" for n in range(1, 5)]
-    roads = [Road(seed, vehicle, 0, trip, profile) for vehicle in vehicles]
-    traces = drive_trips(
-        roads,
-        [duration] * len(roads),
-        list(np.linspace(2300, 3300, len(roads))),
-        air_density(101300, ambient),
-        LongitudinalParameters.from_model(model),
-        DriverParameters.from_configs(profile, model),
-        time_limit=duration + 2 * trip_overrun_bound(profile),
-    )
-    p = SteeringParameters.from_model(model)
-    results = []
-    for road, trace in zip(roads, traces, strict=True):
-        tracker = CurveTracker(1)
-        tracker.start_trip(0, road)
-        # Positions at the start of each step, then the position after the last step.
-        next_speed = trace.speed + trace.accel * PHYSICS_DT
-        end = trace.position[-1] + (trace.speed[-1] + next_speed[-1]) / 2 * PHYSICS_DT
-        positions = np.append(trace.position, end)
-        kappa = np.empty_like(positions)
-        for k, s in enumerate(positions):
-            tracker.update(np.array([s]), np.array([True]))
-            kappa[k] = tracker.curvature(np.array([s]))[0]
-        state = steering_state(kappa[:-1], kappa[1:], trace.speed, p)
-        results.append((trace, positions, kappa, state))
-    return results
-
-
 @settings(max_examples=max(10, settings.default.max_examples // 5))
 @given(
     seed=st.integers(min_value=0, max_value=2**32 - 1),
@@ -197,7 +163,13 @@ def test_driven_steering_respects_the_invariants(
     driver_range = catalogue().signal("driver_torque").range
     assist_range = catalogue().signal("eps_assist_torque").range
     p = SteeringParameters.from_model(model)
-    for trace, positions, kappa, state in drive_with_steering(seed, trip, duration, ambient):
+    for driven in drive_with_steering(seed, trip, duration, ambient):
+        trace, positions, kappa, state = (
+            driven.trace,
+            driven.positions,
+            driven.curvature,
+            driven.steering,
+        )
         # Single-track couplings, exact on the true state.
         assert np.array_equal(state.yaw_rate, trace.speed * state.curvature)
         assert np.array_equal(state.accel_lat, trace.speed * state.yaw_rate)

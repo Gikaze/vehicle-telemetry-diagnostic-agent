@@ -75,7 +75,8 @@ configuration, with small per-vehicle variation so no two vans are identical.
 | Steering wheel angle and rate | Angle `i_s · δ` (`i_s` steering ratio); rate = angle change over the step / `DT`, like the longitudinal acceleration | Road curvature |
 | Yaw rate | Single-track model: `v · tan(δ) / L = v · κ` at low lateral acceleration (`δ` road-wheel angle, `L` wheelbase) | Speed, steering angle |
 | Lateral accel | `v · yaw_rate`, sensor at the reference point (section 8) | Speed, yaw rate |
-| Wheel speeds | `v` plus a cornering offset proportional to `yaw_rate · track / 2` (outer wheels faster), plus slip under hard braking, plus sensor noise | Speed, yaw rate, brake pressure |
+| Wheel speeds | Kinematic single track: rear wheels `v ∓ yaw_rate · track / 2`, front wheels `sqrt((v ∓ yaw_rate · track / 2)² + (yaw_rate · L)²)` (outer wheels faster, front axle on a wider radius); times `1 + slip`, with a linear slip per axle `F_x / (C · F_z)` (static axle loads from the payload; braking split by `front_brake_share`, traction and engine drag on the rear axle); read by the ECU with the nominal tyre radius (a van's tyre radius bias shows in every reading); plus sensor noise | Speed, yaw rate, brake and engine forces, payload |
+| Odometer | Distance read from the two rear wheels (their mean speed is `v` in a curve), with the rear slip and the tyre radius bias; starts from a per-vehicle reading | Speed, slip |
 | Reference speed | **Estimated from wheel speeds** (not copied from true `v`), as an ESC does | Wheel speeds |
 | Disc temperature (×4) | First-order: heats in proportion to braking energy shared per axle, cools exponentially, faster with speed | Brake pressure, speed, ambient |
 | Tyre temperature and pressure (×4) | Tyre temperature rises with driving; pressure follows temperature (ideal-gas behaviour) around the model's nominal value | Speed, ambient |
