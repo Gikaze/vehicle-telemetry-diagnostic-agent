@@ -1,11 +1,11 @@
 """Fleet registry and per-vehicle parameters (spec section 4: no two vans are identical)."""
 
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 
 import numpy as np
 
-from simulator.config_files import van_model
 from simulator.params import Config, ConfigError, Layout, config_path, load_config
 from simulator.rng import Stream, vehicle_generator
 
@@ -13,7 +13,7 @@ WHEELS = ("fl", "fr", "rl", "rr")
 
 FLEET_LAYOUT = Layout(
     structural={("id_prefix",): str, ("id_digits",): int, ("model",): str, ("batches",): list},
-    parameters=frozenset({"size"}),
+    parameters=frozenset({"size", "odometer_initial_min", "odometer_initial_max"}),
 )
 
 
@@ -41,11 +41,25 @@ class VehicleParameters:
     tyre_rolling_radius: float  # m, same for the four wheels
     disc_heat_capacity: tuple[float, float, float, float]  # J/K
     tyre_pressure_nominal: tuple[float, float, float, float]  # bar, gauge, at the reference temp
+    odometer_initial: float  # m, reading at the start of the simulation
+
+
+@cache
+def fleet_config() -> Config:
+    """The repository's fleet file, loaded and validated on first use (never at import)."""
+    return load_fleet_config()
+
+
+def load_fleet_config(path: Path | None = None) -> Config:
+    config = load_config(path or config_path("fleet.yaml"), FLEET_LAYOUT)
+    if not 0 <= config.value("odometer_initial_min") < config.value("odometer_initial_max"):
+        raise ConfigError("fleet.yaml: expected 0 <= odometer_initial_min < odometer_initial_max")
+    return config
 
 
 def load_fleet(size: int | None = None, path: Path | None = None) -> tuple[Vehicle, ...]:
     """Vehicles numbered 1..size in order; `size` overrides the configured fleet size."""
-    config = load_config(path or config_path("fleet.yaml"), FLEET_LAYOUT)
+    config = load_fleet_config(path)
     batches = _batches(config)
     count = config.value("size") if size is None else size
     _check_size(count, config, batches)
@@ -107,11 +121,15 @@ def _batch_of(number: int, batches: tuple[Batch, ...]) -> str:
     raise ConfigError(f"vehicle number {number} is in no production batch")
 
 
-def draw_vehicle_parameters(root_seed: int, vehicle: Vehicle, model: Config) -> VehicleParameters:
+def draw_vehicle_parameters(
+    root_seed: int, vehicle: Vehicle, model: Config, fleet: Config
+) -> VehicleParameters:
     """Variation around the model values, from this vehicle's PARAMETERS stream only.
 
     The draw order is part of the reproducibility contract: payload, tyre radius, vehicle disc
-    factor, then per wheel (WHEELS order) the disc factor and the cold pressure offset.
+    factor, per wheel (WHEELS order) the disc factor, per wheel the cold pressure offset, then the
+    initial odometer (added last, so it did not shift the earlier draws). `fleet` is the fleet
+    file the vehicles were loaded from (odometer bounds).
     """
     rng = vehicle_generator(root_seed, vehicle.id, Stream.PARAMETERS)
 
@@ -123,6 +141,9 @@ def draw_vehicle_parameters(root_seed: int, vehicle: Vehicle, model: Config) -> 
     vehicle_disc = 1.0 + float(spread("disc_heat_capacity_vehicle_spread"))
     wheel_disc = 1.0 + spread("disc_heat_capacity_wheel_spread", len(WHEELS))
     pressure_offset = spread("tyre_pressure_wheel_spread", len(WHEELS))
+    odometer = float(
+        rng.uniform(fleet.si("odometer_initial_min"), fleet.si("odometer_initial_max"))
+    )
     nominal_capacity = (
         model.value("disc_heat_capacity_front"),
         model.value("disc_heat_capacity_front"),
@@ -139,11 +160,12 @@ def draw_vehicle_parameters(root_seed: int, vehicle: Vehicle, model: Config) -> 
         tyre_rolling_radius=radius,
         disc_heat_capacity=capacity,  # type: ignore[arg-type]
         tyre_pressure_nominal=pressure,  # type: ignore[arg-type]
+        odometer_initial=odometer,
     )
 
 
 def draw_fleet_parameters(
-    root_seed: int, fleet: tuple[Vehicle, ...], model: Config | None = None
+    root_seed: int, vehicles: tuple[Vehicle, ...], model: Config, fleet: Config
 ) -> tuple[VehicleParameters, ...]:
-    model = model or van_model()
-    return tuple(draw_vehicle_parameters(root_seed, vehicle, model) for vehicle in fleet)
+    """Parameters of each vehicle; `fleet` is the fleet file `vehicles` were loaded from."""
+    return tuple(draw_vehicle_parameters(root_seed, vehicle, model, fleet) for vehicle in vehicles)

@@ -24,6 +24,23 @@ mass:
     rationale: >-
       Upper bound of the per-vehicle payload draw (uniform from 0); keeps the laden mass below
       3.5 t gross vehicle weight.
+  unladen_rear_axle_share:
+    value: 0.45
+    unit: "-"
+    rationale: >-
+      Share of the unladen mass on the rear axle: a front-engined van is front-heavy when empty
+      (assumed order of magnitude, not sourced). Static axle loads only, no load transfer (spec
+      section 1). Rear axle load = unladen_rear_axle_share * mass_empty
+      + payload_rear_axle_share * payload; it sets the wheel loads of the slip law
+      (tyre_slip_stiffness).
+  payload_rear_axle_share:
+    value: 0.88
+    unit: "-"
+    rationale: >-
+      Share of the payload carried by the rear axle: in a delivery van the load centroid sits close
+      to the rear axle (author's value, chassis engineering background; an assumption, not
+      sourced). Rear axle share 0.45 empty, (0.45 * 2300 + 0.88 * 1000) / 3300 = 0.58 at
+      payload_max. The ECU margins (ecu_slip_speed_min) are checked over 0.75 to 1.0.
 
 geometry:
   wheelbase:
@@ -108,9 +125,10 @@ longitudinal:
     value: 0.5
     unit: 1/s
     rationale: >-
-      Proportional gain of the driver following the segment target speed:
-      a = clip(gain * (v_target - v), -decel_service_max, accel_max); reaches the target within
-      a few seconds.
+      Proportional gain of the driver tracking the planned speed outside approaches:
+      a = a_ref + gain * (v_ref - v) (drive_profile.yaml, driver section), then limited to
+      [-decel_service_max, accel_max] and by engine power; closes a speed error within a few
+      seconds.
   drag_area:
     value: 1.3
     unit: m2
@@ -226,18 +244,21 @@ brakes:
     rationale: Cooling time constant at 20 m/s; second point of the law above.
 
 ecu_logic:
-  wheel_slip_per_decel:
-    value: 0.005
-    unit: 1/(m/s2)
+  tyre_slip_stiffness:
+    value: 19
+    unit: "-"
     rationale: >-
-      Braking slip of every wheel per m/s2 of deceleration: 2 % at the service braking limit, well
-      below abs_slip_threshold.
-  wheel_slip_per_accel:
-    value: 0.005
-    unit: 1/(m/s2)
-    rationale: >-
-      Traction slip of the driven (rear) wheels per m/s2 of acceleration: 1 % at accel_max, well
-      below tcs_slip_threshold.
+      Longitudinal slip stiffness normalised by the wheel load (Magic Formula K_x / F_z at nominal
+      load, PKX1). A wheel's slip is F_x / (stiffness * F_z), linear far below the force peak, with
+      static axle loads. Per axle: braking force front_brake_share * F_brake on the front axle,
+      (1 - front_brake_share) * F_brake plus the engine drag on the rear (driven) axle; traction on
+      the rear axle. No published range was found, and none for van tyres. Example values from
+      MathWorks documentation (passenger-car tyres): 19 (Simscape Driveline, Tire (Magic
+      Formula), default constant coefficients B * C * D = 10 * 1.9 * 1), 21.39 (Vehicle Dynamics
+      Blockset, Combined Slip Wheel STI, default PKX1) and 21.51 (Simscape Driveline default
+      p_Kx1; the page cites Pacejka, Tire and Vehicle Dynamics, 2005). The lowest is used. A
+      softer tyre slips more, so the ECU margins (ecu_slip_speed_min) use a conservative floor
+      of 15.
   abs_slip_threshold:
     value: 0.15
     unit: "-"
@@ -254,6 +275,37 @@ ecu_logic:
     rationale: >-
       Difference between measured yaw rate and the single-track reference above which ESC
       intervenes; never reached by v1.0 drive profiles.
+  ecu_reference_speed_min:
+    value: 5
+    unit: km/h
+    rationale: >-
+      Minimum-speed guard of the brake ECU, which works on measured wheel speeds: slip ratios are
+      taken over max(reference speed, this value), and the ESC yaw check is inactive below it. As
+      a pure ratio, wheel speed noise and quantisation (a difference of up to 2 * (3 * 0.05 +
+      0.005) = 0.31 km/h between two wheels) at 0.5 km/h would read as a slip of 0.6 and trigger
+      TCS at every pull-away.
+  ecu_slip_speed_min:
+    value: 2
+    unit: km/h
+    rationale: >-
+      Minimum absolute slip: ABS and TCS also require a wheel speed difference above this value,
+      so a flag needs both the slip ratio and the absolute difference above their thresholds, and
+      the margin below is the larger of the two threshold-to-worst-case ratios. The ECU compares
+      measured wheel speeds after two kinematic corrections, in this order: on the front axle,
+      the projection onto the vehicle axis (times cos of the road-wheel angle from the measured
+      steering angle), then the yaw term per wheel (+/- yaw_rate * track_width / 2).
+      Worst case in normal driving, over 0 to 90 km/h, empty and laden, combining at each speed
+      the tightest curve the drive profile allows (radius 10 m at 16.1 km/h, wider above), the
+      service braking limit or the largest traction force (accel_max plus the steepest climb,
+      rural_grade_max = 3 % in drive_profile.yaml, and the resistances, capped by engine power),
+      and 2 * 0.174 km/h of measurement error (wheel speed noise at 3 sigma and half resolution,
+      yaw rate and steering angle errors through the corrections). Conservative case,
+      tyre_slip_stiffness floor 15 and payload_rear_axle_share over 0.75 to 1.0: lowest ABS
+      margin 1.94 (share 1.0, laden van at 13.4 km/h, front slip 4.97 % against rear 1.76 %,
+      1.04 km/h or 7.7 %); lowest TCS margin 1.87 (empty van at 20.1 km/h, rear slip 3.63 %,
+      1.08 km/h or 5.4 %; the payload share does not matter). Nominal values (stiffness 19, share
+      0.88): ABS 2.26, TCS 2.18. Without the front-axle correction the front wheels would read
+      1.02 km/h above the rear ones in the 10 m curve.
 
 tyres:
   tyre_pressure_nominal:

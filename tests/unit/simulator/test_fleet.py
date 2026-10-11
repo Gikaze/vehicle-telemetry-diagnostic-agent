@@ -6,7 +6,13 @@ import pytest
 import yaml
 
 from simulator.config_files import van_model
-from simulator.fleet import WHEELS, draw_fleet_parameters, load_fleet
+from simulator.fleet import (
+    WHEELS,
+    draw_fleet_parameters,
+    fleet_config,
+    load_fleet,
+    load_fleet_config,
+)
 from simulator.params import ConfigError, config_path
 
 
@@ -65,7 +71,7 @@ def test_bad_batch_ranges_are_rejected(tmp_path: Path, batches: list, message: s
 
 def test_variation_stays_within_the_configured_spreads() -> None:
     model = van_model()
-    values = draw_fleet_parameters(42, load_fleet(), model)
+    values = draw_fleet_parameters(42, load_fleet(), model, fleet_config())
     radius = model.value("tyre_rolling_radius")
     vehicle_spread = model.value("disc_heat_capacity_vehicle_spread")
     wheel_spread = model.value("disc_heat_capacity_wheel_spread")
@@ -84,8 +90,43 @@ def test_variation_stays_within_the_configured_spreads() -> None:
             assert abs(offset) <= model.value("tyre_pressure_wheel_spread")
 
 
+def test_initial_odometer_stays_within_its_bounds() -> None:
+    fleet = fleet_config()
+    values = draw_fleet_parameters(42, load_fleet(), van_model(), fleet)
+    low, high = fleet.si("odometer_initial_min"), fleet.si("odometer_initial_max")
+    assert all(low <= value.odometer_initial <= high for value in values)
+    assert len({value.odometer_initial for value in values}) == len(values)
+
+
+def test_a_custom_fleet_file_gives_its_own_odometer_bounds(tmp_path: Path) -> None:
+    def edit(document):
+        document["odometer"]["odometer_initial_min"]["value"] = 1
+        document["odometer"]["odometer_initial_max"]["value"] = 2
+
+    path = fleet_copy(tmp_path, edit)
+    custom = load_fleet_config(path)
+    values = draw_fleet_parameters(42, load_fleet(path=path), van_model(), custom)
+    assert all(1000 <= value.odometer_initial <= 2000 for value in values)
+
+
+def test_earlier_draws_are_unchanged_by_the_odometer_draw() -> None:
+    """Values drawn before the odometer was added (commit 8739021): it is drawn last."""
+    value = draw_fleet_parameters(42, load_fleet(size=1), van_model(), fleet_config())[0]
+    assert value.payload == 197.4870954802308
+    assert value.tyre_rolling_radius == 0.3476860237095967
+    assert value.tyre_pressure_nominal[-1] == 3.8491164472282535
+
+
+def test_inverted_odometer_bounds_are_rejected(tmp_path: Path) -> None:
+    def edit(document):
+        document["odometer"]["odometer_initial_min"]["value"] = 200000
+
+    with pytest.raises(ConfigError, match="odometer_initial_min < odometer_initial_max"):
+        load_fleet_config(fleet_copy(tmp_path, edit))
+
+
 def test_left_and_right_discs_differ() -> None:
     """Per-wheel variation exists, so the left/right spread invariant is not trivially zero."""
-    value = draw_fleet_parameters(42, load_fleet(size=1), van_model())[0]
+    value = draw_fleet_parameters(42, load_fleet(size=1), van_model(), fleet_config())[0]
     fl, fr, rl, rr = value.disc_heat_capacity
     assert fl != fr and rl != rr

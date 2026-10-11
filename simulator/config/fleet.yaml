@@ -26,3 +26,18 @@ fleet:
     value: 100
     unit: vehicles
     rationale: Fleet size of FR-01; overridable at run time within the batch ranges.
+
+odometer:
+  odometer_initial_min:
+    value: 5000
+    unit: km
+    rationale: >-
+      Lower bound of the per-vehicle draw (uniform) of the odometer reading at the start of the
+      simulation: a van in service for a few months.
+  odometer_initial_max:
+    value: 150000
+    unit: km
+    rationale: >-
+      Upper bound of the same draw: a delivery van after a few years of service (about 40 000 km a
+      year). The odometer then counts the distance read from the wheels (nominal tyre radius), so
+      it carries the vehicle's tyre radius bias.

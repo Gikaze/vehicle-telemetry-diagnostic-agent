@@ -1,7 +1,9 @@
 # Sensor layer: measurement noise per signal. Resolution and quantisation come from catalogue.yaml.
 #
-# Noise is Gaussian with standard deviation sigma, truncated at noise_clip_sigma * sigma, so every
-# measurement error is bounded: |measured - true| <= noise_clip_sigma * sigma + resolution / 2.
+# Noise is Gaussian with standard deviation sigma, clipped at +/- noise_clip_sigma * sigma (a sample
+# beyond the bound is set to the bound, not redrawn, so every step consumes the same number of
+# draws), and every measurement error is bounded: |measured - true| <= noise_clip_sigma * sigma +
+# resolution / 2.
 # Invariant tests use that bound as their tolerance, so they never fail on a statistical outlier.
 # Every numeric catalogue signal is listed here with its sigma, or is noise-free in the code with a
 # stated reason (estimates computed by an ECU, fixed or integrated values).
@@ -12,8 +14,10 @@ noise:
     value: 3
     unit: "-"
     rationale: >-
-      Truncation of the Gaussian noise at 3 sigma (99.7 % of an untruncated Gaussian), which bounds
-      every measurement error and keeps test tolerances deterministic.
+      Clipping of the Gaussian noise at 3 sigma, which bounds every measurement error and keeps
+      test tolerances deterministic. About 0.27 % of samples lie beyond 3 sigma and sit exactly at
+      +/- 3 sigma after clipping, so about 24 % of the 10 s windows of a signal (100 samples:
+      1 - 0.9973^100 = 0.237) contain a sample at that bound.
 
 noise_sigma:
   wheel_speed:

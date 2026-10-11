@@ -30,6 +30,7 @@ UNIT_FACTORS: dict[str, float | None] = {
     "vehicles": 1.0,
     "kg": 1.0,
     "m": 1.0,
+    "km": 1000.0,
     "m2": 1.0,
     "s": 1.0,
     "min": 60.0,

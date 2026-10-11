@@ -20,6 +20,8 @@ VAN_MODEL_LAYOUT = Layout(
             # mass
             "mass_empty",
             "payload_max",
+            "unladen_rear_axle_share",
+            "payload_rear_axle_share",
             # geometry
             "wheelbase",
             "track_width",
@@ -62,11 +64,12 @@ VAN_MODEL_LAYOUT = Layout(
             "disc_cooling_tau_standstill",
             "disc_cooling_tau_at_20mps",
             # brake ECU logic
-            "wheel_slip_per_decel",
-            "wheel_slip_per_accel",
+            "tyre_slip_stiffness",
             "abs_slip_threshold",
             "tcs_slip_threshold",
             "esc_yaw_error_threshold",
+            "ecu_reference_speed_min",
+            "ecu_slip_speed_min",
             # tyres
             "tyre_pressure_nominal",
             "tyre_pressure_reference_temp",

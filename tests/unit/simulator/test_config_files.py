@@ -6,7 +6,14 @@ from pathlib import Path
 import pytest
 import yaml
 
-from simulator.config_files import load_plausibility, load_van_model
+from simulator.catalogue import catalogue
+from simulator.config_files import (
+    NOISE_FREE,
+    NOISY_SIGNALS,
+    load_plausibility,
+    load_van_model,
+    sensors,
+)
 from simulator.params import ConfigError, config_path
 
 
@@ -82,3 +89,15 @@ def test_front_rear_ratio_bounds_are_ordered(tmp_path: Path) -> None:
     path.write_text(yaml.safe_dump(document))
     with pytest.raises(ConfigError, match="ratio_min must be below"):
         load_plausibility(path)
+
+
+def test_every_numeric_signal_is_noisy_or_noise_free_with_a_reason() -> None:
+    """sensors.yaml lists a sigma for each noisy signal; every other one has a stated reason."""
+    numeric = {signal.name for signal in catalogue().signals if signal.is_number}
+    noisy = [name for names in NOISY_SIGNALS.values() for name in names]
+    assert len(noisy) == len(set(noisy)), "a signal is listed under two sigmas"
+    assert not set(noisy) & set(NOISE_FREE), "a signal is both noisy and noise-free"
+    assert numeric - set(noisy) == set(NOISE_FREE)
+    assert set(noisy) <= numeric
+    assert all(isinstance(reason, str) and reason.strip() for reason in NOISE_FREE.values())
+    assert set(sensors().parameters) == {"noise_clip_sigma", *NOISY_SIGNALS}
