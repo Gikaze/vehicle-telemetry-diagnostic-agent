@@ -17,15 +17,19 @@ the pedal enough to hold the van, at least standstill_brake_pressure (drive_prof
     p = max(standstill_brake_pressure, brake_pressure_gain * F_hold / brake_reference_mass)
 
 with F_hold = m * g * |sin(atan(grade))| (rolling resistance ignored); the brakes do no work. The
-unmarked rest step can be the last step at a final stop on a descent of up to 10 %, where 10 bar
-alone would not hold a laden van (11.5 bar needed). At a delivery stop, which is always held, the
-driver leaves the cab with the engine running: the pedal is released (p = 0) and the van is held
-by the parking brake, which is not modelled (spec section 8).
+drive model records F_brake = F_hold and engine force 0 on a held step (model/drive.py), but the
+pressure there follows the rule above, not F_brake: it is never below standstill_brake_pressure.
+The unmarked rest step can be the last step at a final stop on a descent of up to 10 %, where
+10 bar alone would not hold a laden van (11.5 bar needed). At a delivery stop, which is always
+held, the driver leaves the cab with the engine running: the pedal is released (p = 0) and the
+parking brake supplies F_hold; the parking brake itself is not modelled (spec section 8).
 The brake light switch reports brake_pedal_pressed exactly when p > brake_switch_pressure.
 
 Braking energy over a step is F_brake times the distance the model moved the van in that step
 (model/drive.py), so the step on which the van comes to rest is counted with its actual
-distance. Per wheel in WHEELS order (fl, fr, rl, rr): front_brake_share / 2 to each front disc,
+distance. On a held step it is exactly 0: static friction does no work, even on the step where a
+stop cancels a commanded pull-away and the model still moves the van up to about 6 mm. Per wheel
+in WHEELS order (fl, fr, rl, rr): front_brake_share / 2 to each front disc,
 (1 - front_brake_share) / 2 to each rear disc, of which brake_energy_to_disc heats the disc.
 """
 
@@ -97,11 +101,13 @@ def brake_pedal_pressed(pressure: np.ndarray, p: BrakeParameters) -> np.ndarray:
 
 
 def disc_heating_power(
-    brake_force: np.ndarray, step_distance: np.ndarray, p: BrakeParameters
+    brake_force: np.ndarray, step_distance: np.ndarray, held: np.ndarray, p: BrakeParameters
 ) -> np.ndarray:
     """Power heating each disc over the step, W, shape (n, 4) in WHEELS order: the energy
-    brake_energy_to_disc * F_brake * step distance, spread over DT."""
+    brake_energy_to_disc * F_brake * step distance, spread over DT; exactly 0 on a held step,
+    where the brakes hold the van by static friction and do no work, even when the model moved
+    the van (a stop that cancels a commanded pull-away, spec section 8)."""
     _check_brake_force(brake_force)
-    power = brake_force * step_distance / PHYSICS_DT * p.energy_to_disc
+    power = np.where(held, 0.0, brake_force * step_distance / PHYSICS_DT * p.energy_to_disc)
     front, rear = p.front_share / 2, (1 - p.front_share) / 2
     return power[..., None] * np.array([front, front, rear, rear])

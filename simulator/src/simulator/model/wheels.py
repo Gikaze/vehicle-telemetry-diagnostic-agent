@@ -12,7 +12,14 @@ Longitudinal slip, linear far below the force peak, per axle (van_model.yaml, ty
 sigma = F_x / (stiffness * F_z), with static axle loads from the payload (unladen_rear_axle_share,
 payload_rear_axle_share; no load transfer). F_x is front_brake_share * F_brake (braking) on the
 front axle; the engine force (traction, or engine drag when negative) minus
-(1 - front_brake_share) * F_brake on the rear (driven) axle. A wheel's rolling speed
+(1 - front_brake_share) * F_brake on the rear (driven) axle. The brake force always acts backward
+here, which is right while moving and at rest on a descent. At rest on a climb the brakes hold
+the van against rolling back and push forward, so the axle forces sum to F_grade instead of
+-F_grade (off by 2 * |F_grade|); at a delivery stop the parking brake holds the van and the axle
+split is not physical. Neither affects the wheel speed readings, exactly 0 at rest whatever the
+slip. The odometer increment is 0 on a held step too, except where a stop cancels a commanded
+pull-away and the model still moves the van up to about 6 mm (spec section 8, issue #7): that
+distance is counted, scaled by the slip from the holding force. A wheel's rolling speed
 omega * r = ground speed * (1 + sigma): faster than the ground when driving, slower when braking.
 
 The brake ECU converts rotation to speed with the nominal tyre radius, so a wheel speed reading is

@@ -197,13 +197,22 @@ Confirmation thresholds are simulator parameters, not values taken from any real
   van on `urban_grade_max`, the steepest grade of the urban segments where traffic stops lie. At rest also covers
   the unmarked step when the approach law brings the van to 0 one step before a stop captures it, which can be
   the last step at a final stop on a descent of up to 10 % (11.5 bar for a laden van): holding the pedal there
-  keeps `brake_pedal_pressed` from dropping for 0.1 s, which would count as a false press. At a delivery stop the driver leaves the cab with the engine
-  running: the pedal is released (0 bar, `brake_pedal_pressed` false) and the van is held by the parking brake,
-  which is not modelled and has no signal. A delivery stop sits at the end of an urban segment, so the van may
-  stand on the next segment's grade (rural up to 3 %, descent up to 10 %).
+  keeps `brake_pedal_pressed` from dropping for 0.1 s, which would count as a false press. At a delivery stop
+  the driver leaves the cab with the engine running: the pedal is released (0 bar, `brake_pedal_pressed` false)
+  and the van is held by the parking brake, which is not modelled and has no signal. A delivery stop sits at the
+  end of an urban segment, so the van may stand on the next segment's grade (rural up to 3 %, descent up to
+  10 %). On every step at rest, delivery stops included, the model records no traction and a friction brake
+  force of `F_hold` (supplied by the parking brake at a delivery, with the pedal released); the pressure still
+  follows the rule above, not this force.
 - When the van comes to rest at a stop, its speed is set to 0 from below `stop_speed_threshold` without a force:
   at most 0.1 m/s, i.e. at most ½ · 3300 kg · (0.1 m/s)² = 16.5 J per stop that no brake absorbs (below 0.01 K on
   a disc).
+- On a step where a stop cancels a pull-away commanded from rest, the position still advances with the commanded
+  speed: the van and the odometer can advance up to about 6 mm on a step at rest (seen on 9 of 320 five-minute
+  trips, with no missed stop). The brakes do no work on that step (no disc heating). The odometer also gets up to
+  0.014 mm of rear slip from `F_hold` there, which is not physical at rest (static friction, like the disc
+  power). Keeping the van in place shifts later positions and speeds and can leave it more than 1 cm short of a
+  final stop; see issue #7.
 - No pull-away happens inside a curve: trip starts and intermediate stops are at least `event_min_spacing`
   (50 m) away from any curve; the final stop can sit at a curve's end, but ignition goes off there. A van
   at rest therefore never steers. This is a property of the drive profile, not of the steering law, which only

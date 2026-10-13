@@ -9,6 +9,15 @@ sensors) builds on it. Per step, for every vehicle at once (`step`):
 
 The recorded acceleration is the actual (v' - v) / DT, after stops are applied.
 
+The recorded forces come from the longitudinal model (split_forces), except on a held step (speed 0
+at both ends, after stops): there the van is held by the brakes, with engine force 0 and friction
+brake force F_hold = m * g * |sin(atan(grade))| (model/brakes.py, hold_force). This includes the
+unmarked step at rest before a stop captures the van, where the command to pull away is overridden
+by the stop. On that step the position still advances with the commanded speed, up to about 6 mm
+(spec section 8, issue #7). At a delivery stop the parking brake supplies F_hold with the
+pedal released; the front/rear brake split applied to it downstream is not physical there, and has
+no effect on the wheel speed readings, which are exactly 0 at rest.
+
 A slot with no trip in progress (not started yet, or ended) is held: its speed stays 0, its
 position stays where it is (0, or where its trip ended), and its acceleration, reference speed,
 grade and forces are 0; no output of the step is NaN.
@@ -19,6 +28,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from simulator.constants import PHYSICS_DT
+from simulator.model.brakes import held_steps, hold_force
 from simulator.model.longitudinal import (
     LongitudinalParameters,
     acceleration_limits,
@@ -93,6 +103,9 @@ def step(
     planner.update_events(s_next, v_next)
     planner.insert_final_stops(s_next, v_next)
     v_next = planner.apply_stops(s_next, v_next, v)
+    at_rest = active & held_steps(v, v_next)
+    engine_force = np.where(held | at_rest, 0.0, forces.engine)
+    brake_force = np.where(at_rest, hold_force(mass, grade), np.where(held, 0.0, forces.brake))
     return Step(
         active=active,
         time=time_now,
@@ -101,8 +114,8 @@ def step(
         accel=(v_next - v) / PHYSICS_DT,
         speed_ref=np.where(active, v_ref, 0.0),
         grade=np.where(active, grade, 0.0),
-        engine_force=np.where(held, 0.0, forces.engine),
-        brake_force=np.where(held, 0.0, forces.brake),
+        engine_force=engine_force,
+        brake_force=brake_force,
         stopped=stopped_now,
         at_delivery=delivery_now,
         next_position=s_next,

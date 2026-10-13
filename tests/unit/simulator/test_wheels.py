@@ -191,6 +191,20 @@ def test_driven_wheel_speeds_respect_the_invariants(
         next_speed = np.append(trace.speed[1:], 0.0)
         free = ~trace.stopped & (next_speed > 0)
         assert np.allclose((front_force + rear_force)[free], needed[free], rtol=1e-9, atol=1e-6)
+        # At rest the brakes hold the van: brake force |F_grade|, no engine force. The axle forces
+        # take the brake force as acting backward, which balances gravity at rest on a descent or
+        # the flat; on a climb the brakes push forward, so the sum is off by exactly 2 |F_grade|
+        # (no effect on the readings or the odometer, both exactly 0 at rest).
+        held = (trace.speed == 0) & (next_speed == 0)
+        gravity = grade_force(mass, trace.grade)
+        total = front_force + rear_force
+        assert np.allclose(trace.brake_force[held], np.abs(gravity[held]), rtol=1e-12, atol=0)
+        assert np.all(trace.engine_force[held] == 0)
+        level_or_down = held & (trace.grade <= 0)
+        assert np.allclose(total[level_or_down] + gravity[level_or_down], 0, rtol=0, atol=1e-6)
+        up = held & (trace.grade > 0)
+        gap = (total + gravity)[up]
+        assert np.allclose(gap, -2 * np.abs(gravity[up]), rtol=1e-12, atol=1e-9)
         readings = wheel_speed_readings(trace.speed, yaw, slip_front, slip_rear, radius, p)
         # Readings are 0 exactly at standstill and positive otherwise.
         still = trace.speed == 0
