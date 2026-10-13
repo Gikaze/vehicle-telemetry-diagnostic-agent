@@ -34,6 +34,7 @@ class Trace:
 
     time: np.ndarray  # s since the trip start
     position: np.ndarray  # m
+    next_position: np.ndarray  # m, at the end of the step (as moved by the model)
     speed: np.ndarray  # m/s at the start of the step
     accel: np.ndarray  # m/s2, actual over the step
     speed_ref: np.ndarray  # m/s
@@ -41,6 +42,7 @@ class Trace:
     engine_force: np.ndarray  # N
     brake_force: np.ndarray  # N
     stopped: np.ndarray  # bool, held at a stop during the step
+    at_delivery: np.ndarray  # bool, held at a delivery stop (not a traffic stop) during the step
     end_time: float  # s, ignition off
     duration: float  # s, planned
     start_step: int  # fleet step at which the trip started
@@ -60,6 +62,7 @@ class Step:
     engine_force: np.ndarray  # N
     brake_force: np.ndarray  # N
     stopped: np.ndarray  # bool, held at a stop during the step
+    at_delivery: np.ndarray  # bool, held at a delivery stop during the step
     next_position: np.ndarray  # m
     next_speed: np.ndarray  # m/s
 
@@ -84,6 +87,7 @@ def step(
     v_next = np.maximum(v + accel * PHYSICS_DT, 0.0)
     s_next = s + (v + v_next) / 2 * PHYSICS_DT
     stopped_now = planner.stopped.copy()
+    delivery_now = planner.at_delivery.copy()
     time_now = planner.time.copy()
     planner.advance_time()
     planner.update_events(s_next, v_next)
@@ -100,6 +104,7 @@ def step(
         engine_force=np.where(held, 0.0, forces.engine),
         brake_force=np.where(held, 0.0, forces.brake),
         stopped=stopped_now,
+        at_delivery=delivery_now,
         next_position=s_next,
         next_speed=v_next,
     )
@@ -138,6 +143,7 @@ def drive_trips(
     fields = (
         "time",
         "position",
+        "next_position",
         "speed",
         "accel",
         "speed_ref",
@@ -145,6 +151,7 @@ def drive_trips(
         "engine_force",
         "brake_force",
         "stopped",
+        "at_delivery",
         "active",
     )
     stacked = {name: np.array([getattr(result, name) for result in steps]) for name in fields}
@@ -155,6 +162,7 @@ def drive_trips(
             Trace(
                 time=stacked["time"][rows, i],
                 position=stacked["position"][rows, i],
+                next_position=stacked["next_position"][rows, i],
                 speed=stacked["speed"][rows, i],
                 accel=stacked["accel"][rows, i],
                 speed_ref=stacked["speed_ref"][rows, i],
@@ -162,6 +170,7 @@ def drive_trips(
                 engine_force=stacked["engine_force"][rows, i],
                 brake_force=stacked["brake_force"][rows, i],
                 stopped=stacked["stopped"][rows, i],
+                at_delivery=stacked["at_delivery"][rows, i],
                 end_time=float(planner.end_time[i]),
                 duration=float(durations[i]),
                 start_step=int(np.argmax(rows)),

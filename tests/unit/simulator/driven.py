@@ -5,7 +5,6 @@ from dataclasses import dataclass
 import numpy as np
 
 from simulator.config_files import van_model
-from simulator.constants import PHYSICS_DT
 from simulator.model.drive import Trace, drive_trips
 from simulator.model.forces import air_density
 from simulator.model.longitudinal import LongitudinalParameters
@@ -50,9 +49,7 @@ def drive_with_steering(
         tracker = CurveTracker(1)
         tracker.start_trip(0, road)
         # Positions at the start of each step, then the position after the last step.
-        next_speed = trace.speed + trace.accel * PHYSICS_DT
-        end = trace.position[-1] + (trace.speed[-1] + next_speed[-1]) / 2 * PHYSICS_DT
-        positions = np.append(trace.position, end)
+        positions = np.append(trace.position, trace.next_position[-1])
         kappa = np.empty_like(positions)
         for k, s in enumerate(positions):
             tracker.update(np.array([s]), np.array([True]))

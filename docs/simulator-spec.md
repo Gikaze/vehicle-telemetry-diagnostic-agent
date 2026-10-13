@@ -191,6 +191,19 @@ Confirmation thresholds are simulator parameters, not values taken from any real
   with the shortest curvature ramp: `curve_transition_time_min` = 2 s (the cap `R · angle / v` is never shorter,
   at least 2.47 s for downhill bends), so `ψ̈ = v / (R · t)` = 0.224 rad/s². The extra terms then reach 0.34 to
   0.44 m/s² on `a_y` on the ramps and −0.30 to −0.40 m/s² on `a_x` in the arc.
+- Brake pedal at stops: whenever the van is at rest (speed 0 at both ends of a step) outside a delivery stop,
+  the driver holds `max(standstill_brake_pressure, brake_pressure_gain · F_hold / brake_reference_mass)`, with
+  `F_hold = m · g · |sin(atan(grade))|`. `standstill_brake_pressure` (10 bar) is checked at load to hold the laden
+  van on `urban_grade_max`, the steepest grade of the urban segments where traffic stops lie. At rest also covers
+  the unmarked step when the approach law brings the van to 0 one step before a stop captures it, which can be
+  the last step at a final stop on a descent of up to 10 % (11.5 bar for a laden van): holding the pedal there
+  keeps `brake_pedal_pressed` from dropping for 0.1 s, which would count as a false press. At a delivery stop the driver leaves the cab with the engine
+  running: the pedal is released (0 bar, `brake_pedal_pressed` false) and the van is held by the parking brake,
+  which is not modelled and has no signal. A delivery stop sits at the end of an urban segment, so the van may
+  stand on the next segment's grade (rural up to 3 %, descent up to 10 %).
+- When the van comes to rest at a stop, its speed is set to 0 from below `stop_speed_threshold` without a force:
+  at most 0.1 m/s, i.e. at most ½ · 3300 kg · (0.1 m/s)² = 16.5 J per stop that no brake absorbs (below 0.01 K on
+  a disc).
 - No pull-away happens inside a curve: trip starts and intermediate stops are at least `event_min_spacing`
   (50 m) away from any curve; the final stop can sit at a curve's end, but ignition goes off there. A van
   at rest therefore never steers. This is a property of the drive profile, not of the steering law, which only

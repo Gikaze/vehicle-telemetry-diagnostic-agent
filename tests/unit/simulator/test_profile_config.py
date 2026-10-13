@@ -125,6 +125,8 @@ def test_bad_drive_profiles_are_rejected(
         ("driver", "pull_away_accel", 2.5, "pull_away_accel exceeds accel_max"),
         ("driver", "stop_speed_threshold", 0.2, "decelerates faster than approach_decel"),
         ("driver", "standstill_brake_pressure", 2, "must exceed brake_switch_pressure"),
+        # Laden van on 10 %: 3300 * g * sin(atan 0.1) = 3220 N, i.e. 11.5 bar > 10 bar.
+        ("urban", "urban_grade_max", 10, "does not hold the laden van .* 11.5 bar"),
         # 3.6 m * 17 / 6 m = 10.2 rad = 584 deg > 540 deg lock.
         ("urban", "urban_turn_radius_min", 6, "beyond the 540 deg lock"),
         # 351 deg of steering wheel in a 0.9 s ramp = 390 deg/s > 360 deg/s.

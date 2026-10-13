@@ -10,7 +10,7 @@ from pathlib import Path
 
 from simulator.catalogue import Catalogue, catalogue
 from simulator.config_files import van_model
-from simulator.constants import PHYSICS_DT
+from simulator.constants import GRAVITY, PHYSICS_DT
 from simulator.model.forces import air_density, brake_force_to_hold_speed
 from simulator.params import Config, ConfigError, Layout, config_path, load_config
 
@@ -219,10 +219,34 @@ def check_profile_against_model(profile: Config, model: Config, duty: Config) ->
         raise ConfigError(
             "drive_profile.yaml: standstill_brake_pressure must exceed brake_switch_pressure"
         )
+    _check_standstill_hold(profile, model)
     for kind in SEGMENT_TYPES:
         _check_curves(kind, profile, model)
     _check_downhill_braking(profile, model, duty)
     _check_day_end_margin(profile, duty)
+
+
+def standstill_hold_pressure_needed(profile: Config, model: Config) -> float:
+    """Pressure, Pa, that holds the laden van at rest at a traffic stop on its steepest grade.
+
+    Traffic stops lie inside urban segments, so the grade is urban_grade_max; the force is
+    m * g * sin(atan(grade)), rolling resistance ignored, converted with
+    p = brake_pressure_gain * F / brake_reference_mass. Delivery stops stand at an urban segment's
+    end, possibly on the next segment's grade, and are held by the parking brake (not modelled);
+    on other steps at rest the pedal pressure rises to the holding force (model/brakes.py).
+    """
+    mass = model.si("mass_empty") + model.si("payload_max")
+    force = mass * GRAVITY * math.sin(math.atan(profile.si("urban_grade_max")))
+    return model.si("brake_pressure_gain") * force / model.si("brake_reference_mass")
+
+
+def _check_standstill_hold(profile: Config, model: Config) -> None:
+    needed = standstill_hold_pressure_needed(profile, model)
+    if profile.si("standstill_brake_pressure") < needed:
+        raise ConfigError(
+            f"drive_profile.yaml: standstill_brake_pressure does not hold the laden van on "
+            f"urban_grade_max (needs {needed / 1e5:.1f} bar)"
+        )
 
 
 def longest_curve_time(profile: Config) -> float:

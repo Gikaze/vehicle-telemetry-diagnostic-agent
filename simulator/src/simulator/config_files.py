@@ -167,6 +167,7 @@ def load_van_model(path: Path | None = None) -> Config:
     config = load_config(path or config_path("van_model.yaml"), VAN_MODEL_LAYOUT)
     _check_drive_axle(config)
     _check_gear_schedule(config)
+    _check_brakes(config)
     return config
 
 
@@ -185,6 +186,13 @@ def _check_drive_axle(config: Config) -> None:
     axle = config.structure[("drive_axle",)]
     if axle not in DRIVE_AXLES:
         raise ConfigError(f"van_model.yaml: drive_axle must be one of {DRIVE_AXLES}, got {axle!r}")
+
+
+def _check_brakes(config: Config) -> None:
+    """Pressure = gain * F_brake / reference mass is non-negative for a non-negative force."""
+    for name in ("brake_pressure_gain", "brake_reference_mass"):
+        if not config.value(name) > 0:
+            raise ConfigError(f"van_model.yaml: {name} must be positive")
 
 
 def _check_gear_schedule(config: Config) -> None:

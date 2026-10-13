@@ -35,7 +35,7 @@ import numpy as np
 
 from simulator.constants import PHYSICS_DT
 from simulator.params import Config
-from simulator.profile.road import Road
+from simulator.profile.road import Road, StopKind
 from simulator.profile_config import SEGMENT_TYPES
 
 STOP = 0
@@ -75,6 +75,7 @@ class Constraint:
     kind: int
     duration: float = 0.0  # stops only
     final: bool = False
+    stop_kind: StopKind | None = None  # stops only: traffic, delivery or final
 
 
 @dataclass
@@ -117,6 +118,8 @@ class SpeedPlanner:
         self.next_stop_position = np.full(n, np.inf)
         self.next_stop_duration = np.zeros(n)
         self.next_stop_final = np.zeros(n, dtype=bool)
+        self.next_stop_delivery = np.zeros(n, dtype=bool)
+        self.at_delivery = np.zeros(n, dtype=bool)  # held at a delivery stop (not a traffic stop)
         self.window_k = 4
         self.window_position = np.full((n, self.window_k), np.inf)
         self.window_speed = np.full((n, self.window_k), np.inf)
@@ -143,6 +146,7 @@ class SpeedPlanner:
         self.curve_end[i] = np.inf
         self.ramp_position[i], self.ramp_speed[i] = 0.0, 0.0
         self.stopped[i] = False
+        self.at_delivery[i] = False
         self.stop_until[i] = 0.0
         self.final_inserted[i] = False
         self.ended[i] = False
@@ -175,7 +179,10 @@ class SpeedPlanner:
                 for c in plan.curves
                 if c.speed < plan.segment.target_speed
             ]
-            constraints += [Constraint(st.position, 0.0, STOP, st.duration) for st in plan.stops]
+            constraints += [
+                Constraint(st.position, 0.0, STOP, st.duration, stop_kind=st.kind)
+                for st in plan.stops
+            ]
             if index + 1 < len(plans):
                 following = plans[index + 1].segment
                 if following.target_speed < plan.segment.target_speed:
@@ -183,7 +190,11 @@ class SpeedPlanner:
                         Constraint(following.start, following.target_speed, BOUNDARY)
                     )
         if road.final_stop is not None:
-            constraints.append(Constraint(road.final_stop.position, 0.0, STOP, final=True))
+            constraints.append(
+                Constraint(
+                    road.final_stop.position, 0.0, STOP, final=True, stop_kind=StopKind.FINAL
+                )
+            )
         constraints.sort(key=lambda c: (c.position, c.kind))
         trip.constraints = constraints
         trip.built_until = road.generated_until
@@ -212,6 +223,7 @@ class SpeedPlanner:
         self.next_stop_position[i] = stop.position if stop else np.inf
         self.next_stop_duration[i] = stop.duration if stop else 0.0
         self.next_stop_final[i] = stop.final if stop else False
+        self.next_stop_delivery[i] = stop is not None and stop.stop_kind is StopKind.DELIVERY
 
     def _grow(self, k: int) -> None:
         pad = np.full((self.n, k - self.window_k), np.inf)
@@ -244,6 +256,7 @@ class SpeedPlanner:
 
     def _end(self, i: int) -> None:
         self.ended[i] = True
+        self.at_delivery[i] = False
         self.end_time[i] = self.time[i]
 
     # Per-step update ----------------------------------------------------------------------------
@@ -377,6 +390,7 @@ class SpeedPlanner:
                 self._end(i)
             else:
                 self.stopped[i] = True
+                self.at_delivery[i] = self.next_stop_delivery[i]
                 self.stop_until[i] = self.time[i] + self.next_stop_duration[i]
         release = self.stopped & ~self.ended & (self.time >= self.stop_until)
         for i in np.flatnonzero(release):
@@ -387,6 +401,7 @@ class SpeedPlanner:
                 if passed.kind == STOP:
                     break
             self.stopped[i] = False
+            self.at_delivery[i] = False
             self.ramp_position[i], self.ramp_speed[i] = s[i], 0.0
             self._refresh(i, s[i])
         return np.where(self.stopped | self.ended | arriving, 0.0, v)

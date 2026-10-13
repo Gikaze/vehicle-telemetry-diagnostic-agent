@@ -70,6 +70,14 @@ def test_bad_gear_schedules_are_rejected(tmp_path: Path, edit, message: str) -> 
         load_van_model(van_model_copy(tmp_path, edit))
 
 
+@pytest.mark.parametrize("name", ["brake_pressure_gain", "brake_reference_mass"])
+@pytest.mark.parametrize("value", [0, -10])
+def test_brake_pressure_law_needs_positive_constants(tmp_path: Path, name: str, value) -> None:
+    """p = gain * F_brake / reference mass must be non-negative for every F_brake >= 0."""
+    with pytest.raises(ConfigError, match=f"{name} must be positive"):
+        load_van_model(van_model_copy(tmp_path, set_value("brakes", name, value)))
+
+
 def test_drive_axle_must_be_front_or_rear(tmp_path: Path) -> None:
     def edit(document):
         document["drive_axle"] = "middle"
