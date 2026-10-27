@@ -1,5 +1,7 @@
 """Constants fixed by definition or by the specification: not configurable parameters."""
 
+import math
+
 # Standard acceleration of gravity, m/s2 (3rd CGPM, 1901; ISO 80000-3).
 GRAVITY = 9.80665
 
@@ -11,6 +13,9 @@ ZERO_CELSIUS_K = 273.15
 # quotient would be 287.05307). Quoted from secondary sources; the standard's text is not freely
 # available. Air density of the day: rho = atmospheric pressure / (R_DRY_AIR * ambient in K).
 R_DRY_AIR = 287.05287
+
+# Revolutions per minute per rad/s, by definition of the units (1 rev = 2 pi rad, 1 min = 60 s).
+RAD_S_TO_RPM = 60 / (2 * math.pi)
 
 # Physics time step, s: 10 Hz, fixed by docs/simulator-spec.md, section 4.
 PHYSICS_DT = 0.1

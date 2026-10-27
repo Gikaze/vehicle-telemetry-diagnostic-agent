@@ -4,14 +4,13 @@ import math
 
 import numpy as np
 import pytest
-from driven import DrivenTrip, drive_with_steering
+from driven import DrivenTrip, drawn, drive_with_steering
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from simulator.catalogue import catalogue
 from simulator.config_files import plausibility, van_model
 from simulator.constants import PHYSICS_DT
-from simulator.fleet import Vehicle, VehicleParameters, draw_vehicle_parameters, fleet_config
 from simulator.model.brakes import BrakeParameters, held_steps
 from simulator.model.forces import (
     air_density,
@@ -53,12 +52,6 @@ def one(value: float) -> np.ndarray:
 
 def tyres() -> TyreParameters:
     return TyreParameters.from_model(van_model())
-
-
-def drawn(seed: int, number: int) -> VehicleParameters:
-    """Parameters drawn for VAN-<number> (fleet.py)."""
-    vehicle = Vehicle(id=f"VAN-{number:03d}", number=number, model="nordwind-lv1", batch="test")
-    return draw_vehicle_parameters(seed, vehicle, van_model(), fleet_config())
 
 
 def capacities(seed: int, number: int) -> np.ndarray:

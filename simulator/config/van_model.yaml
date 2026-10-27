@@ -168,8 +168,10 @@ powertrain:
     unit: "-"
     rationale: >-
       Gearbox ratios 4.5, 2.6, 1.7, 1.2, 0.95, 0.78 times a 3.9 final drive. Engine speed =
-      v / tyre_rolling_radius * ratio * 60 / (2 pi), and max(idle_speed, that) when pulling away in
-      first gear (clutch slipping). About 2075 rpm at 90 km/h in sixth.
+      v * (1 + rear slip) / r * ratio * 60 / (2 pi), with r the vehicle's drawn tyre radius (the
+      engine turns with the driven rear wheels); idle_speed at rest, and max(idle_speed, that) when
+      moving (clutch slipping while pulling away in first gear). About 2075 rpm at 90 km/h in
+      sixth with the nominal radius and no slip.
   upshift_speed:
     value: 2500
     unit: rpm

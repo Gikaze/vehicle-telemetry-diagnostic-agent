@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from simulator.config_files import van_model
+from simulator.fleet import Vehicle, VehicleParameters, draw_vehicle_parameters, fleet_config
 from simulator.model.drive import Trace, drive_trips
 from simulator.model.forces import air_density
 from simulator.model.longitudinal import LongitudinalParameters
@@ -23,6 +24,13 @@ class DrivenTrip:
     positions: np.ndarray  # m, at the start of each step, then after the last step
     curvature: np.ndarray  # 1/m, at `positions`
     steering: SteeringState  # one entry per step
+
+
+def drawn(seed: int, number: int) -> VehicleParameters:
+    """Parameters drawn for VAN-<number> (fleet.py), the van in slot number - 1 of
+    drive_with_steering."""
+    vehicle = Vehicle(id=f"VAN-{number:03d}", number=number, model="nordwind-lv1", batch="test")
+    return draw_vehicle_parameters(seed, vehicle, van_model(), fleet_config())
 
 
 def drive_with_steering(
