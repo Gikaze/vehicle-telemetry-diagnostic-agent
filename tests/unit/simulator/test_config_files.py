@@ -127,6 +127,27 @@ def test_bad_coolant_constants_are_rejected(tmp_path: Path, edit, message: str) 
         load_van_model(van_model_copy(tmp_path, edit))
 
 
+@pytest.mark.parametrize(
+    ("edit", "message"),
+    [
+        (set_value("ecu_logic", "abs_slip_threshold", 0), "abs_slip_threshold must lie between"),
+        (set_value("ecu_logic", "tcs_slip_threshold", 1), "tcs_slip_threshold must lie between"),
+        (
+            set_value("ecu_logic", "esc_yaw_error_threshold", 0),
+            "esc_yaw_error_threshold must be positive",
+        ),
+        (
+            set_value("ecu_logic", "ecu_reference_speed_min", -5),
+            "ecu_reference_speed_min must be positive",
+        ),
+        (set_value("ecu_logic", "ecu_slip_speed_min", 0), "ecu_slip_speed_min must be positive"),
+    ],
+)
+def test_bad_ecu_constants_are_rejected(tmp_path: Path, edit, message: str) -> None:
+    with pytest.raises(ConfigError, match=message):
+        load_van_model(van_model_copy(tmp_path, edit))
+
+
 @pytest.mark.parametrize("name", ["brake_pressure_gain", "brake_reference_mass"])
 @pytest.mark.parametrize("value", [0, -10])
 def test_brake_pressure_law_needs_positive_constants(tmp_path: Path, name: str, value) -> None:

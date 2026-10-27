@@ -4,18 +4,14 @@ import math
 
 import numpy as np
 import pytest
-from driven import drive_with_steering
+from driven import drive_with_steering, slip_bound
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from simulator.config_files import van_model
 from simulator.constants import GRAVITY
 from simulator.model.forces import drag_force, grade_force, rolling_resistance_force
-from simulator.model.longitudinal import (
-    LongitudinalParameters,
-    acceleration_limits,
-    split_forces,
-)
+from simulator.model.longitudinal import LongitudinalParameters, split_forces
 from simulator.model.wheels import (
     WheelParameters,
     axle_forces,
@@ -24,7 +20,6 @@ from simulator.model.wheels import (
     odometer_increment,
     wheel_speed_readings,
 )
-from simulator.profile_config import drive_profile
 
 
 def params() -> WheelParameters:
@@ -96,31 +91,6 @@ def test_traction_slip_on_the_rear_axle() -> None:
     assert front[0] == 0
     assert rear[0] == pytest.approx(5290 / (19 * 1035 * GRAVITY), rel=1e-12)
     assert rear[0] == pytest.approx(0.0274, abs=1e-4)
-
-
-def slip_bound(masses: np.ndarray) -> float:
-    """Largest |slip| the model can produce, from the configuration: service braking on the
-    steepest descent and the largest traction on the steepest climb, at the lowest speed (no drag
-    helping), over the given masses, with the model's stiffness and axle loads."""
-    model, profile = van_model(), drive_profile()
-    longitudinal, p = LongitudinalParameters.from_model(model), params()
-    speed = np.full_like(masses, 0.1)
-    descent = np.full_like(masses, -profile.si("downhill_grade_max"))
-    climb = np.full_like(
-        masses, max(profile.si(f"{kind}_grade_max") for kind in ("urban", "rural"))
-    )
-    bound = 0.0
-    braking = np.full_like(masses, -longitudinal.decel_service_max)
-    forces = split_forces(braking, speed, descent, masses, 1.2, longitudinal)
-    bound = max(
-        bound, *(np.max(np.abs(s)) for s in axle_slip(forces.engine, forces.brake, masses, p))
-    )
-    _, highest = acceleration_limits(speed, climb, masses, 1.2, longitudinal)
-    forces = split_forces(highest, speed, climb, masses, 1.2, longitudinal)
-    bound = max(
-        bound, *(np.max(np.abs(s)) for s in axle_slip(forces.engine, forces.brake, masses, p))
-    )
-    return float(bound)
 
 
 def test_slip_bound_from_the_configuration() -> None:

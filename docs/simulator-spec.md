@@ -77,7 +77,8 @@ configuration, with small per-vehicle variation so no two vans are identical.
 | Lateral accel | `v · yaw_rate`, sensor at the reference point (section 8) | Speed, yaw rate |
 | Wheel speeds | Kinematic single track: rear wheels `v ∓ yaw_rate · track / 2`, front wheels `sqrt((v ∓ yaw_rate · track / 2)² + (yaw_rate · L)²)` (outer wheels faster, front axle on a wider radius); times `1 + slip`, with a linear slip per axle `F_x / (C · F_z)` (static axle loads from the payload; braking split by `front_brake_share`, traction and engine drag on the rear axle); read by the ECU with the nominal tyre radius (a van's tyre radius bias shows in every reading); plus sensor noise | Speed, yaw rate, brake and engine forces, payload |
 | Odometer | Distance read from the two rear wheels (their mean speed is `v` in a curve), with the rear slip and the tyre radius bias; starts from a per-vehicle reading | Speed, slip |
-| Reference speed | **Estimated from wheel speeds** (not copied from true `v`), as an ESC does | Wheel speeds |
+| Reference speed | **Estimated from measured wheel speeds** (not copied from true `v`), as an ESC does: each wheel brought to the rear axle centre (front wheels × `cos δ`, `δ` from the measured steering angle, then `± yaw_rate · track / 2` from the measured yaw rate); the fastest corrected wheel while the brake pedal is pressed, the front (non-driven) mean otherwise | Wheel speeds, yaw rate, steering angle, brake switch |
+| ABS, TCS, ESC flags | Computed by the brake ECU from the measured signals: ABS (pedal pressed) when a wheel is below the reference speed, TCS (pedal released) when a rear wheel is above it, both by more than `ecu_slip_speed_min` **and** a slip ratio over `max(v_ref, ecu_reference_speed_min)` above its threshold; ESC when `|yaw_rate − v_ref · tan δ / L|` exceeds `esc_yaw_error_threshold` above `ecu_reference_speed_min` | Reference speed, wheel speeds, yaw rate, steering angle |
 | Disc temperature (×4) | First-order: heats in proportion to braking energy shared per axle (none on a step at rest), cools exponentially towards ambient with `1/τ` affine in the step's mean speed, the same `τ` on the four discs; exact update over each step with power and `τ` held | Brake force, speed, ambient |
 | Tyre temperature and pressure (×4) | Temperature: first-order towards `T_a + rise · min(1, v / v_ref)` (`v` the step's mean speed), exact update over each step, one temperature for the four tyres. Pressure: ideal gas at constant volume on absolute pressure, from each wheel's cold pressure set at 20 °C | Speed, ambient |
 | Coolant temperature | First-order towards the regulated temperature `thermostat + load_rise · pedal / 100` (90 to 94 °C), one time constant for warm-up and tracking in the band, exact update over each step; the engine runs for the whole trip | Engine running time, load (pedal) |
@@ -232,7 +233,12 @@ Confirmation thresholds are simulator parameters, not values taken from any real
   differ only by the per-wheel cold pressure. Cold pressures are set at 20 °C whatever the day's
   ambient, so a nominal tyre reads 3.39 bar cold on a −5 °C day. Pressure follows the ideal gas on
   absolute pressure (gauge plus the day's atmospheric pressure).
-- The reference speed is a simple estimate from wheel speeds.
+- The reference speed is a simple estimate from wheel speeds. The brake ECU uses one road-wheel angle for both
+  front wheels, so its front axle correction leaves +1.01 % on the inner and −0.94 % on the outer front wheel in
+  the 10 m curve at its curve speed; slip and the tyre radius bias also scale the yaw term it adds back.
+- ABS, TCS and ESC never intervene in v1.0: in the worst case of the drive profiles, with the measurement errors
+  at their bounds, the lowest margins are 2.13 (ABS), 1.86 (TCS) and 3.93 (ESC), checked from the
+  configuration by a unit test (`van_model.yaml`, `ecu_slip_speed_min` and `esc_yaw_error_threshold`).
 - Fault codes carry a subset of the UDS status bits with a simple cycle-based debounce; UDS services, freeze
   frames and DTC ageing are not simulated.
 - Telemetry uses fixed 10 s aggregation windows plus event messages.

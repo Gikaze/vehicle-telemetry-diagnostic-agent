@@ -172,6 +172,7 @@ def load_van_model(path: Path | None = None) -> Config:
     _check_disc_cooling(config)
     _check_tyres(config)
     _check_coolant(config)
+    _check_ecu(config)
     return config
 
 
@@ -238,6 +239,17 @@ def _check_coolant(config: Config) -> None:
         raise ConfigError("van_model.yaml: coolant_warmup_tau must be positive")
     if not config.value("coolant_load_rise") >= 0:
         raise ConfigError("van_model.yaml: coolant_load_rise must not be negative")
+
+
+def _check_ecu(config: Config) -> None:
+    """Slip ratios in (0, 1); yaw error threshold and the two speed guards positive (the slip
+    ratio divides by max(reference speed, ecu_reference_speed_min))."""
+    for name in ("abs_slip_threshold", "tcs_slip_threshold"):
+        if not 0 < config.value(name) < 1:
+            raise ConfigError(f"van_model.yaml: {name} must lie between 0 and 1")
+    for name in ("esc_yaw_error_threshold", "ecu_reference_speed_min", "ecu_slip_speed_min"):
+        if not config.value(name) > 0:
+            raise ConfigError(f"van_model.yaml: {name} must be positive")
 
 
 def _check_gear_schedule(config: Config) -> None:
