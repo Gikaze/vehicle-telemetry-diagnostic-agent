@@ -207,9 +207,9 @@ brakes:
     value: 10
     unit: bar/(m/s2)
     rationale: >-
-      Master cylinder pressure per m/s2 of brake deceleration at brake_reference_mass. Pressure =
-      gain * (m / brake_reference_mass) * a_brake, so the pressure scales with the braking force
-      m * a_brake; about 40 bar at the service braking limit for the reference mass.
+      Master cylinder pressure per m/s2 of friction braking at brake_reference_mass: pressure =
+      gain * F_brake / brake_reference_mass, with F_brake the friction brake force of the
+      longitudinal model (model/brakes.py); about 40 bar at 4 m/s2 for the reference mass.
   brake_reference_mass:
     value: 2800
     unit: kg
