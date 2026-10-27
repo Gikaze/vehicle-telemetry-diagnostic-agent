@@ -79,7 +79,7 @@ configuration, with small per-vehicle variation so no two vans are identical.
 | Odometer | Distance read from the two rear wheels (their mean speed is `v` in a curve), with the rear slip and the tyre radius bias; starts from a per-vehicle reading | Speed, slip |
 | Reference speed | **Estimated from wheel speeds** (not copied from true `v`), as an ESC does | Wheel speeds |
 | Disc temperature (×4) | First-order: heats in proportion to braking energy shared per axle (none on a step at rest), cools exponentially towards ambient with `1/τ` affine in the step's mean speed, the same `τ` on the four discs; exact update over each step with power and `τ` held | Brake force, speed, ambient |
-| Tyre temperature and pressure (×4) | Tyre temperature rises with driving; pressure follows temperature (ideal-gas behaviour) around the model's nominal value | Speed, ambient |
+| Tyre temperature and pressure (×4) | Temperature: first-order towards `T_a + rise · min(1, v / v_ref)` (`v` the step's mean speed), exact update over each step, one temperature for the four tyres. Pressure: ideal gas at constant volume on absolute pressure, from each wheel's cold pressure set at 20 °C | Speed, ambient |
 | Coolant temperature | First-order warm-up towards the regulated operating band (thermostat) | Engine running time, load |
 | Engine speed | From vehicle speed and a simple gear schedule; idle when stopped | Speed |
 | Steering torques | Driver torque and assist torque grow with steering rate and lateral acceleration | Steering, lateral accel |
@@ -218,10 +218,14 @@ Confirmation thresholds are simulator parameters, not values taken from any real
   at rest therefore never steers. This is a property of the drive profile, not of the steering law, which only
   guarantees a zero steering rate in a step where the van does not move: a van pulling away inside a curve ramp
   would turn the wheel from rest, and a real driver may steer at standstill, which the profile never does.
-- Brake disc temperature is an uncalibrated first-order estimate. The discs start at the ambient
-  temperature; carrying their heat over parked and ignition-off periods (closed-form cooling) comes
-  with the fleet state and day loop. Coolant temperature, with its rate bound (`coolant_rate_max`,
+- Brake disc temperature is an uncalibrated first-order estimate. The discs and the tyres start at
+  the ambient temperature; carrying their heat over parked and ignition-off periods (closed-form
+  cooling) comes with the fleet state and day loop. Coolant temperature, with its rate bound (`coolant_rate_max`,
   0.5 K/s), comes with the powertrain, whose pedal position sets the coolant target.
+- The four tyres of a van share one temperature (no load, brake heat or sun effect); their pressures
+  differ only by the per-wheel cold pressure. Cold pressures are set at 20 °C whatever the day's
+  ambient, so a nominal tyre reads 3.39 bar cold on a −5 °C day. Pressure follows the ideal gas on
+  absolute pressure (gauge plus the day's atmospheric pressure).
 - The reference speed is a simple estimate from wheel speeds.
 - Fault codes carry a subset of the UDS status bits with a simple cycle-based debounce; UDS services, freeze
   frames and DTC ageing are not simulated.

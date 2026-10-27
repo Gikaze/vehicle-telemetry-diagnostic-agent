@@ -96,6 +96,25 @@ def test_bad_disc_thermal_constants_are_rejected(tmp_path: Path, edit, message: 
         load_van_model(van_model_copy(tmp_path, edit))
 
 
+@pytest.mark.parametrize(
+    ("edit", "message"),
+    [
+        (set_value("tyres", "tyre_thermal_tau", 0), "tyre_thermal_tau must be positive"),
+        (
+            set_value("tyres", "tyre_warmup_reference_speed", -1),
+            "tyre_warmup_reference_speed must be positive",
+        ),
+        (set_value("tyres", "tyre_warmup_rise", -5), "tyre_warmup_rise must not be negative"),
+        # 0.1 bar of spread around 0.1 bar: a drawn cold pressure could be 0.
+        (set_value("tyres", "tyre_pressure_nominal", 0.1), "every drawn cold pressure"),
+        (set_value("variation", "tyre_pressure_wheel_spread", 4), "every drawn cold pressure"),
+    ],
+)
+def test_bad_tyre_constants_are_rejected(tmp_path: Path, edit, message: str) -> None:
+    with pytest.raises(ConfigError, match=message):
+        load_van_model(van_model_copy(tmp_path, edit))
+
+
 @pytest.mark.parametrize("name", ["brake_pressure_gain", "brake_reference_mass"])
 @pytest.mark.parametrize("value", [0, -10])
 def test_brake_pressure_law_needs_positive_constants(tmp_path: Path, name: str, value) -> None:

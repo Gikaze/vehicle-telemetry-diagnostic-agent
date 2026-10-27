@@ -1,4 +1,4 @@
-"""Brake disc temperatures of the fleet, vectorised (spec section 4).
+"""Brake disc and tyre temperatures, and tyre pressures, of the fleet, vectorised (spec section 4).
 
 Each disc i (WHEELS order fl, fr, rl, rr) follows a first-order law towards the day's ambient
 T_a, heated by the braking power P_i that reaches it (model/brakes.py, disc_heating_power) and
@@ -21,15 +21,30 @@ cools exactly as at standstill.
 
 The same tau on all four discs makes each rise T_i - T_a proportional to its power share over
 C_i when the discs start at ambient: the ratio of the front and rear axle mean rises is then
-constant for a vehicle. The discs start at the ambient temperature; carrying their heat over
-parked and ignition-off periods comes with the day loop (spec section 8).
+constant for a vehicle.
+
+The tyres follow a first-order law towards a target that rises with the step's mean speed v
+(van_model.yaml, tyres section), with one time constant for warm-up and cool-down:
+
+    T_target = T_a + warmup_rise * min(1, v / warmup_reference_speed)
+    T' = T_target + (T - T_target) e^(-DT/tau)
+
+The four tyres share one temperature (no load, brake heat or sun effect in v1.0); the state keeps
+one column per wheel. Each tyre's gauge pressure follows the ideal gas at constant volume on
+absolute pressure, from its cold pressure p_cold (drawn per wheel, fleet.py) set at
+tyre_pressure_reference_temp and the day's atmospheric pressure p_atm (duty_cycle.yaml):
+
+    p = (p_cold + p_atm) * (T + 273.15) / (T_ref + 273.15) - p_atm
+
+Discs and tyres start at the ambient temperature; carrying their heat over parked and
+ignition-off periods comes with the day loop (spec section 8).
 """
 
 from dataclasses import dataclass
 
 import numpy as np
 
-from simulator.constants import PHYSICS_DT
+from simulator.constants import PHYSICS_DT, ZERO_CELSIUS_K
 from simulator.model.brakes import BrakeParameters, disc_heating_power, held_steps
 from simulator.params import Config
 
@@ -70,3 +85,48 @@ def disc_step(
     tau = disc_cooling_tau((speed + next_speed) / 2, p)[..., None]
     decay = -np.expm1(-PHYSICS_DT / tau)  # 1 - e^(-DT/tau)
     return temp - (temp - ambient) * decay + power / capacity * tau * decay
+
+
+@dataclass(frozen=True)
+class TyreParameters:
+    warmup_rise: float  # K
+    warmup_speed: float  # m/s
+    tau: float  # s
+    reference_temp: float  # degC, at which the cold pressures are set
+
+    @classmethod
+    def from_model(cls, model: Config) -> "TyreParameters":
+        return cls(
+            warmup_rise=model.si("tyre_warmup_rise"),
+            warmup_speed=model.si("tyre_warmup_reference_speed"),
+            tau=model.si("tyre_thermal_tau"),
+            reference_temp=model.value("tyre_pressure_reference_temp"),
+        )
+
+
+def tyre_target_temperature(
+    mean_speed: np.ndarray, ambient: float, p: TyreParameters
+) -> np.ndarray:
+    """Temperature, degC, that the tyres approach at the given speed (m/s)."""
+    return ambient + p.warmup_rise * np.minimum(1.0, np.asarray(mean_speed) / p.warmup_speed)
+
+
+def tyre_step(
+    temp: np.ndarray,
+    speed: np.ndarray,
+    next_speed: np.ndarray,
+    ambient: float,
+    p: TyreParameters,
+) -> np.ndarray:
+    """Tyre temperatures, degC, (n, 4) in WHEELS order, at the end of a step from `temp`."""
+    target = tyre_target_temperature((speed + next_speed) / 2, ambient, p)[..., None]
+    return target + (temp - target) * np.exp(-PHYSICS_DT / p.tau)
+
+
+def tyre_pressure(
+    temp: np.ndarray, cold_pressure: np.ndarray, atmospheric: float, p: TyreParameters
+) -> np.ndarray:
+    """Gauge pressure, Pa, of tyres at `temp` (degC) whose gauge pressure is `cold_pressure` (Pa)
+    at the reference temperature; `atmospheric` is the absolute ambient pressure, Pa."""
+    scale = (temp + ZERO_CELSIUS_K) / (p.reference_temp + ZERO_CELSIUS_K)
+    return (cold_pressure + atmospheric) * scale - atmospheric

@@ -170,6 +170,7 @@ def load_van_model(path: Path | None = None) -> Config:
     _check_gear_schedule(config)
     _check_brakes(config)
     _check_disc_cooling(config)
+    _check_tyres(config)
     return config
 
 
@@ -210,6 +211,22 @@ def _check_disc_cooling(config: Config) -> None:
         raise ConfigError(
             "van_model.yaml: expected 0 < disc_cooling_tau_reference "
             "< disc_cooling_tau_standstill (discs cool faster when moving)"
+        )
+
+
+def _check_tyres(config: Config) -> None:
+    """Target T_a + rise * min(1, v / reference speed) and the first-order step need a positive
+    time constant and reference speed and a non-negative rise; every drawn cold pressure must be
+    positive."""
+    for name in ("tyre_thermal_tau", "tyre_warmup_reference_speed"):
+        if not config.value(name) > 0:
+            raise ConfigError(f"van_model.yaml: {name} must be positive")
+    if not config.value("tyre_warmup_rise") >= 0:
+        raise ConfigError("van_model.yaml: tyre_warmup_rise must not be negative")
+    if not config.value("tyre_pressure_nominal") - config.value("tyre_pressure_wheel_spread") > 0:
+        raise ConfigError(
+            "van_model.yaml: tyre_pressure_nominal minus tyre_pressure_wheel_spread must be "
+            "positive (every drawn cold pressure)"
         )
 
 
