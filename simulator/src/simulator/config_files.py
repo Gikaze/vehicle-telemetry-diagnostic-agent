@@ -62,7 +62,8 @@ VAN_MODEL_LAYOUT = Layout(
             "disc_heat_capacity_front",
             "disc_heat_capacity_rear",
             "disc_cooling_tau_standstill",
-            "disc_cooling_tau_at_20mps",
+            "disc_cooling_tau_reference",
+            "disc_cooling_reference_speed",
             # brake ECU logic
             "tyre_slip_stiffness",
             "abs_slip_threshold",
@@ -168,6 +169,7 @@ def load_van_model(path: Path | None = None) -> Config:
     _check_drive_axle(config)
     _check_gear_schedule(config)
     _check_brakes(config)
+    _check_disc_cooling(config)
     return config
 
 
@@ -193,6 +195,22 @@ def _check_brakes(config: Config) -> None:
     for name in ("brake_pressure_gain", "brake_reference_mass"):
         if not config.value(name) > 0:
             raise ConfigError(f"van_model.yaml: {name} must be positive")
+
+
+def _check_disc_cooling(config: Config) -> None:
+    """Heat capacities positive; 1/tau = (1/tau_standstill) * (1 + v / v_c) needs
+    0 < tau_reference < tau_standstill and a positive reference speed, so that v_c > 0."""
+    for name in ("disc_heat_capacity_front", "disc_heat_capacity_rear"):
+        if not config.value(name) > 0:
+            raise ConfigError(f"van_model.yaml: {name} must be positive")
+    if not config.value("disc_cooling_reference_speed") > 0:
+        raise ConfigError("van_model.yaml: disc_cooling_reference_speed must be positive")
+    reference = config.value("disc_cooling_tau_reference")
+    if not 0 < reference < config.value("disc_cooling_tau_standstill"):
+        raise ConfigError(
+            "van_model.yaml: expected 0 < disc_cooling_tau_reference "
+            "< disc_cooling_tau_standstill (discs cool faster when moving)"
+        )
 
 
 def _check_gear_schedule(config: Config) -> None:

@@ -70,6 +70,32 @@ def test_bad_gear_schedules_are_rejected(tmp_path: Path, edit, message: str) -> 
         load_van_model(van_model_copy(tmp_path, edit))
 
 
+def test_disc_cooling_law_parameters_load() -> None:
+    model = load_van_model()
+    assert model.si("disc_cooling_tau_standstill") == 600
+    assert model.si("disc_cooling_tau_reference") == 150
+    assert model.si("disc_cooling_reference_speed") == 20
+
+
+@pytest.mark.parametrize(
+    ("edit", "message"),
+    [
+        # Equal or longer than at standstill: discs would not cool faster when moving (v_c
+        # infinite or negative).
+        (set_value("brakes", "disc_cooling_tau_reference", 600), "cool faster when moving"),
+        (set_value("brakes", "disc_cooling_tau_reference", 700), "cool faster when moving"),
+        (set_value("brakes", "disc_cooling_tau_reference", 0), "cool faster when moving"),
+        (set_value("brakes", "disc_cooling_tau_reference", -150), "cool faster when moving"),
+        (set_value("brakes", "disc_cooling_reference_speed", 0), "reference_speed must be"),
+        (set_value("brakes", "disc_heat_capacity_front", 0), "capacity_front must be positive"),
+        (set_value("brakes", "disc_heat_capacity_rear", -1), "capacity_rear must be positive"),
+    ],
+)
+def test_bad_disc_thermal_constants_are_rejected(tmp_path: Path, edit, message: str) -> None:
+    with pytest.raises(ConfigError, match=message):
+        load_van_model(van_model_copy(tmp_path, edit))
+
+
 @pytest.mark.parametrize("name", ["brake_pressure_gain", "brake_reference_mass"])
 @pytest.mark.parametrize("value", [0, -10])
 def test_brake_pressure_law_needs_positive_constants(tmp_path: Path, name: str, value) -> None:
