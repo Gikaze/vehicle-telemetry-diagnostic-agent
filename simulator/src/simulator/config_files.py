@@ -171,6 +171,7 @@ def load_van_model(path: Path | None = None) -> Config:
     _check_brakes(config)
     _check_disc_cooling(config)
     _check_tyres(config)
+    _check_coolant(config)
     return config
 
 
@@ -228,6 +229,15 @@ def _check_tyres(config: Config) -> None:
             "van_model.yaml: tyre_pressure_nominal minus tyre_pressure_wheel_spread must be "
             "positive (every drawn cold pressure)"
         )
+
+
+def _check_coolant(config: Config) -> None:
+    """Target thermostat + load_rise * pedal / 100 and the first-order step need a positive time
+    constant and a non-negative load rise."""
+    if not config.value("coolant_warmup_tau") > 0:
+        raise ConfigError("van_model.yaml: coolant_warmup_tau must be positive")
+    if not config.value("coolant_load_rise") >= 0:
+        raise ConfigError("van_model.yaml: coolant_load_rise must not be negative")
 
 
 def _check_gear_schedule(config: Config) -> None:

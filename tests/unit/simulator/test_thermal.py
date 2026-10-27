@@ -19,9 +19,13 @@ from simulator.model.forces import (
     grade_force,
     rolling_resistance_force,
 )
+from simulator.model.powertrain import PowertrainParameters, accelerator_pedal, pedal_demand
 from simulator.model.thermal import (
+    CoolantParameters,
     DiscParameters,
     TyreParameters,
+    coolant_step,
+    coolant_target_temperature,
     disc_cooling_tau,
     disc_step,
     tyre_pressure,
@@ -57,6 +61,26 @@ def tyres() -> TyreParameters:
 def capacities(seed: int, number: int) -> np.ndarray:
     """Disc heat capacities drawn for VAN-<number>, shape (1, 4)."""
     return np.array([drawn(seed, number).disc_heat_capacity])
+
+
+def coolant() -> CoolantParameters:
+    return CoolantParameters.from_model(van_model())
+
+
+def coolant_temperatures(driven: DrivenTrip, start: float) -> np.ndarray:
+    """Coolant temperatures of a trip starting at `start` (degC), engine running throughout, with
+    the accelerator pedal of the powertrain model: one entry per step boundary (steps + 1)."""
+    trace = driven.trace
+    pedal = accelerator_pedal(
+        pedal_demand(trace.engine_force, trace.speed, PowertrainParameters.from_model(van_model()))
+    )
+    p = coolant()
+    temp = np.array([start])
+    rows = [start]
+    for k in range(len(trace.speed)):
+        temp = coolant_step(temp, pedal[k : k + 1], p)
+        rows.append(float(temp[0]))
+    return np.array(rows)
 
 
 def tyre_temperatures(driven: DrivenTrip, ambient: float) -> np.ndarray:
@@ -363,17 +387,61 @@ def test_long_trips_warm_the_tyres_with_the_speed_cap_reached() -> None:
         assert np.allclose(temps, np.array(replay)[:, None], rtol=1e-12, atol=0)
 
 
+def test_one_coolant_step_follows_the_exact_first_order_update() -> None:
+    """Coolant at 50 degC, pedal at 50 %: target 90 + 4 * 0.5 = 92 degC, so
+    T' = 92 - 42 e^(-0.1 / 480) = 50.008749 degC."""
+    temp = coolant_step(np.array([50.0]), np.array([50.0]), coolant())[0]
+    assert temp == pytest.approx(92 - 42 * math.exp(-0.1 / 480), rel=1e-12)
+    assert temp == pytest.approx(50.008749, abs=1e-6)
+
+
+def test_coolant_warm_up_and_regulated_band() -> None:
+    """From 10 degC at idle (pedal 0): 90 - 80 e^(-1) = 60.570 degC after one time constant
+    (480 s); after 20 time constants, 90 degC at idle and 94 degC at full pedal."""
+    p = coolant()
+    idle, full = np.zeros(2), np.array([0.0, 100.0])
+    temp = np.full(2, 10.0)
+    for _ in range(4800):
+        temp = coolant_step(temp, idle, p)
+    assert temp == pytest.approx(np.full(2, 90 - 80 * math.exp(-1)), rel=1e-9)
+    assert temp[0] == pytest.approx(60.570, abs=0.0005)
+    for _ in range(19 * 4800):
+        temp = coolant_step(temp, full, p)
+    assert temp == pytest.approx([90.0, 94.0], rel=1e-6)
+    assert coolant_target_temperature(np.array([0.0, 100.0]), p).tolist() == [90.0, 94.0]
+
+
+def test_coolant_config_respects_the_plausibility_bounds() -> None:
+    """The fastest warm-up, from the coldest ambient towards the full-load target, is
+    (90 + 4 - (-5)) / 480 s = 0.206 K/s, within coolant_rate_max (0.5 K/s); the regulated band
+    tops out at 94 degC, within coolant_band_max (95 degC)."""
+    p, bounds = coolant(), plausibility()
+    top = p.thermostat + p.load_rise
+    fastest = (top - duty_cycle().value("ambient_temp_min")) / p.tau
+    assert fastest == pytest.approx(0.20625, rel=1e-12)
+    assert fastest <= bounds.si("coolant_rate_max")
+    assert top == 94 and top <= bounds.value("coolant_band_max")
+
+
 @settings(max_examples=max(10, settings.default.max_examples // 5))
 @given(
     seed=st.integers(min_value=0, max_value=2**32 - 1),
     trip=st.integers(min_value=0, max_value=5),
     duration=st.floats(min_value=60.0, max_value=300.0),
     ambient=st.floats(min_value=-5.0, max_value=30.0),
+    coolant_start=st.floats(min_value=0.0, max_value=1.0),
 )
 def test_driven_thermal_states_respect_the_invariants(
-    seed: int, trip: int, duration: float, ambient: float
+    seed: int, trip: int, duration: float, ambient: float, coolant_start: float
 ) -> None:
+    """`coolant_start` places the initial coolant temperature between ambient (cold start) and
+    the top of the regulated band (warm restart, as the day loop will produce)."""
     bounds = plausibility()
+    p_coolant = coolant()
+    band_top = p_coolant.thermostat + p_coolant.load_rise
+    initial = ambient + coolant_start * (band_top - ambient)
+    rate_max, band_max = bounds.si("coolant_rate_max"), bounds.value("coolant_band_max")
+    coolant_low, coolant_high = catalogue().signal("coolant_temp").range
     rel, absolute = bounds.si("disc_lr_spread_rel_max"), bounds.si("disc_lr_spread_abs_max")
     high = catalogue().signal("brake_disc_temp_est_fl").range[1]
     p_tyre = tyres()
@@ -404,6 +472,20 @@ def test_driven_thermal_states_respect_the_invariants(
         expected = (cold + ATMOSPHERIC) / 293.15
         assert np.allclose(absolute_per_kelvin, expected, rtol=1e-12, atol=0)
         assert np.all((pressure_low * BAR <= pressure) & (pressure <= pressure_high * BAR))
+        # Coolant, from a cold start or a warm restart. The target lies in [thermostat, band
+        # top], so the coolant never drops below the lower of its start and the thermostat (hence
+        # never below ambient) nor rises above the band top (within coolant_band_max); below the
+        # thermostat it only warms, once in the band it stays there; its rate stays within
+        # coolant_rate_max.
+        heat = coolant_temperatures(driven, initial)
+        first, then = heat[:-1], heat[1:]
+        assert np.all(heat >= ambient) and np.all(heat >= min(initial, p_coolant.thermostat))
+        assert np.all(heat <= band_top) and np.all(heat <= band_max)
+        assert np.all((coolant_low <= heat) & (heat <= coolant_high))
+        below_thermostat = first < p_coolant.thermostat
+        assert np.all(then[below_thermostat] >= first[below_thermostat])
+        assert np.all(then[~below_thermostat] >= p_coolant.thermostat)
+        assert np.all(np.abs(then - first) / PHYSICS_DT <= rate_max)
         # Discs.
         capacity = capacities(seed, number)
         temps = disc_temperatures(driven, ambient, capacity)

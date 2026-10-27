@@ -115,6 +115,18 @@ def test_bad_tyre_constants_are_rejected(tmp_path: Path, edit, message: str) -> 
         load_van_model(van_model_copy(tmp_path, edit))
 
 
+@pytest.mark.parametrize(
+    ("edit", "message"),
+    [
+        (set_value("engine", "coolant_warmup_tau", 0), "coolant_warmup_tau must be positive"),
+        (set_value("engine", "coolant_load_rise", -1), "coolant_load_rise must not be negative"),
+    ],
+)
+def test_bad_coolant_constants_are_rejected(tmp_path: Path, edit, message: str) -> None:
+    with pytest.raises(ConfigError, match=message):
+        load_van_model(van_model_copy(tmp_path, edit))
+
+
 @pytest.mark.parametrize("name", ["brake_pressure_gain", "brake_reference_mass"])
 @pytest.mark.parametrize("value", [0, -10])
 def test_brake_pressure_law_needs_positive_constants(tmp_path: Path, name: str, value) -> None:

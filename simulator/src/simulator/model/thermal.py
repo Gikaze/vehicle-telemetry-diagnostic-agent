@@ -1,4 +1,5 @@
-"""Brake disc and tyre temperatures, and tyre pressures, of the fleet, vectorised (spec section 4).
+"""Brake disc, tyre and coolant temperatures, and tyre pressures, of the fleet, vectorised (spec
+section 4).
 
 Each disc i (WHEELS order fl, fr, rl, rr) follows a first-order law towards the day's ambient
 T_a, heated by the braking power P_i that reaches it (model/brakes.py, disc_heating_power) and
@@ -36,8 +37,18 @@ tyre_pressure_reference_temp and the day's atmospheric pressure p_atm (duty_cycl
 
     p = (p_cold + p_atm) * (T + 273.15) / (T_ref + 273.15) - p_atm
 
-Discs and tyres start at the ambient temperature; carrying their heat over parked and
-ignition-off periods comes with the day loop (spec section 8).
+The engine coolant follows a first-order law towards the regulated temperature, which rises with
+the load given by the accelerator pedal (model/powertrain.py), with one time constant for the
+warm-up and for tracking within the band (van_model.yaml, engine section):
+
+    T_target = thermostat + load_rise * pedal / 100
+    T' = T_target + (T - T_target) e^(-DT/tau_warmup)
+
+The engine runs for the whole trip, so this law holds on every step of a trip.
+
+Discs, tyres and coolant start at the ambient temperature; carrying their heat over parked and
+ignition-off periods (closed-form cooling, coolant_cooldown_tau for the coolant) comes with the day
+loop (spec section 8).
 """
 
 from dataclasses import dataclass
@@ -130,3 +141,30 @@ def tyre_pressure(
     at the reference temperature; `atmospheric` is the absolute ambient pressure, Pa."""
     scale = (temp + ZERO_CELSIUS_K) / (p.reference_temp + ZERO_CELSIUS_K)
     return (cold_pressure + atmospheric) * scale - atmospheric
+
+
+@dataclass(frozen=True)
+class CoolantParameters:
+    thermostat: float  # degC
+    load_rise: float  # K, at full pedal
+    tau: float  # s, warm-up and tracking in the band
+
+    @classmethod
+    def from_model(cls, model: Config) -> "CoolantParameters":
+        return cls(
+            thermostat=model.value("coolant_thermostat_temp"),
+            load_rise=model.si("coolant_load_rise"),
+            tau=model.si("coolant_warmup_tau"),
+        )
+
+
+def coolant_target_temperature(pedal: np.ndarray, p: CoolantParameters) -> np.ndarray:
+    """Regulated coolant temperature, degC, at the given accelerator pedal position (%)."""
+    return p.thermostat + p.load_rise * np.asarray(pedal) / 100
+
+
+def coolant_step(temp: np.ndarray, pedal: np.ndarray, p: CoolantParameters) -> np.ndarray:
+    """Coolant temperature, degC, (n,), at the end of a step from `temp`, engine running with the
+    step's accelerator pedal position (%)."""
+    target = coolant_target_temperature(pedal, p)
+    return target + (temp - target) * np.exp(-PHYSICS_DT / p.tau)
