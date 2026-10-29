@@ -10,7 +10,7 @@ from hypothesis import strategies as st
 
 from simulator.catalogue import catalogue
 from simulator.config_files import plausibility, van_model
-from simulator.constants import PHYSICS_DT
+from simulator.constants import PHYSICS_DT, SECONDS_PER_DAY
 from simulator.model.brakes import BrakeParameters, held_steps
 from simulator.model.forces import (
     air_density,
@@ -28,6 +28,10 @@ from simulator.model.thermal import (
     coolant_target_temperature,
     disc_cooling_tau,
     disc_step,
+    parked_coolant,
+    parked_discs,
+    parked_temperature,
+    parked_tyres,
     tyre_pressure,
     tyre_step,
     tyre_target_temperature,
@@ -510,3 +514,94 @@ def test_driven_thermal_states_respect_the_invariants(
         for left, right in ((0, 1), (2, 3)):
             larger = np.maximum(rise[:, left], rise[:, right])
             assert np.all(np.abs(rise[:, left] - rise[:, right]) <= rel * larger + absolute)
+
+
+HOUR = 3600.0
+PARKED_STEPS = 3000  # 300 s at rest
+
+
+def test_parked_discs_equal_the_steps_at_rest() -> None:
+    """3000 steps of disc_step at rest with no brake force (tau = tau_standstill) give the closed
+    form over 300 s, here parked from 08:00 on day 2."""
+    temp = np.array([[300.0, 280.0, 150.0, 140.0], [40.0, 40.0, 30.0, 30.0]])
+    zero = np.zeros(2)
+    stepped = temp
+    for _ in range(PARKED_STEPS):
+        stepped = disc_step(stepped, zero, zero, zero, zero, AMBIENT, NOMINAL, params(), brakes())
+    off = np.full(2, 2 * SECONDS_PER_DAY + 8 * HOUR)
+    parked = parked_discs(temp, off, off + PARKED_STEPS * PHYSICS_DT, [0.0, 0.0, AMBIENT], params())
+    assert np.allclose(parked, stepped, rtol=1e-9, atol=0)
+    assert parked[0, 0] == pytest.approx(AMBIENT + 290 * math.exp(-300 / 600), rel=1e-12)
+
+
+def test_parked_tyres_equal_the_steps_at_rest() -> None:
+    """3000 steps of tyre_step at v = 0 (target = ambient, tau = 1200 s) give the closed form."""
+    temp = np.full((2, 4), 35.0)
+    zero = np.zeros(2)
+    stepped = temp
+    for _ in range(PARKED_STEPS):
+        stepped = tyre_step(stepped, zero, zero, AMBIENT, tyres())
+    off = np.full(2, 10 * HOUR)
+    parked = parked_tyres(temp, off, off + PARKED_STEPS * PHYSICS_DT, [AMBIENT], tyres())
+    assert np.allclose(parked, stepped, rtol=1e-9, atol=0)
+    assert parked[0, 0] == pytest.approx(AMBIENT + 25 * math.exp(-300 / 1200), rel=1e-12)
+
+
+def test_parked_coolant_by_hand() -> None:
+    """Engine off for 1 h (coolant_cooldown_tau 3600 s) at 10 degC from 90 degC:
+    10 + 80 e^(-1) = 39.430 degC."""
+    temp = parked_coolant(np.array([90.0]), one(12 * HOUR), one(13 * HOUR), [AMBIENT], coolant())
+    assert temp[0] == pytest.approx(10 + 80 * math.exp(-1), rel=1e-12)
+    assert temp[0] == pytest.approx(39.430, abs=0.0005)
+
+
+def test_parked_cooling_switches_ambient_at_midnight() -> None:
+    """Coolant at 90 degC parked from 23:00 on day 0 to 01:00 on day 1, ambients 10 then 20 degC:
+    10 + 80 e^(-1) = 39.430 at midnight, then 20 + 19.430 e^(-1) = 27.148 degC (one segment at
+    10 degC would give 20.827)."""
+    p = coolant()
+    temp = parked_coolant(np.array([90.0]), one(23 * HOUR), one(25 * HOUR), [10.0, 20.0], p)
+    at_midnight = 10 + 80 * math.exp(-1)
+    assert temp[0] == pytest.approx(20 + (at_midnight - 20) * math.exp(-1), rel=1e-12)
+    assert temp[0] == pytest.approx(27.148, abs=0.0005)
+
+
+def test_parked_times_per_slot_and_edges() -> None:
+    """Each slot cools over its own period; a zero period changes nothing; a period ending exactly
+    at midnight needs no ambient of the next day; times must be ordered and not negative."""
+    p = coolant()
+    temp = np.array([90.0, 90.0, 90.0])
+    off = np.array([0.0, 5 * HOUR, SECONDS_PER_DAY - HOUR])
+    on = np.array([HOUR, 5 * HOUR, SECONDS_PER_DAY])
+    cooled = parked_coolant(temp, off, on, [AMBIENT], p)
+    assert cooled.tolist() == pytest.approx([10 + 80 * math.exp(-1), 90.0, 10 + 80 * math.exp(-1)])
+    with pytest.raises(ValueError, match="off_time <= on_time"):
+        parked_coolant(temp[:1], one(HOUR), one(0.0), [AMBIENT], p)
+    with pytest.raises(ValueError, match="0 <= off_time"):
+        parked_coolant(temp[:1], one(-1.0), one(0.0), [AMBIENT], p)
+
+
+@given(
+    temp=st.floats(min_value=-5.0, max_value=600.0),
+    ambients=st.lists(st.floats(min_value=-5.0, max_value=30.0), min_size=4, max_size=4),
+    times=st.lists(
+        st.floats(min_value=0.0, max_value=3.0 * SECONDS_PER_DAY), min_size=3, max_size=3
+    ),
+    tau=st.sampled_from([600.0, 1200.0, 3600.0]),
+)
+def test_parked_cooling_composes_and_stays_between_its_bounds(
+    temp: float, ambients: list[float], times: list[float], tau: float
+) -> None:
+    """Parking off -> mid -> on equals parking off -> on (a trip of zero length in between changes
+    nothing), and the result lies between the start temperature and the ambients of the days
+    crossed."""
+    off, mid, on = sorted(times)
+    start = np.array([temp])
+    whole = parked_temperature(start, off, on, ambients, tau)
+    split = parked_temperature(
+        parked_temperature(start, off, mid, ambients, tau), mid, on, ambients, tau
+    )
+    assert split == pytest.approx(whole, rel=1e-9, abs=1e-9)
+    crossed = ambients[int(off // SECONDS_PER_DAY) : int(on // SECONDS_PER_DAY) + 1]
+    low, high = min(temp, *crossed), max(temp, *crossed)
+    assert low - 1e-9 <= whole[0] <= high + 1e-9

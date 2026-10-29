@@ -19,3 +19,6 @@ RAD_S_TO_RPM = 60 / (2 * math.pi)
 
 # Physics time step, s: 10 Hz, fixed by docs/simulator-spec.md, section 4.
 PHYSICS_DT = 0.1
+
+# Seconds per day, by definition of the units (no leap seconds in simulated time).
+SECONDS_PER_DAY = 86_400

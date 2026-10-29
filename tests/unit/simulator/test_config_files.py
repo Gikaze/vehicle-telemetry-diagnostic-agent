@@ -120,6 +120,10 @@ def test_bad_tyre_constants_are_rejected(tmp_path: Path, edit, message: str) -> 
     ("edit", "message"),
     [
         (set_value("engine", "coolant_warmup_tau", 0), "coolant_warmup_tau must be positive"),
+        (
+            set_value("engine", "coolant_cooldown_tau", -3600),
+            "coolant_cooldown_tau must be positive",
+        ),
         (set_value("engine", "coolant_load_rise", -1), "coolant_load_rise must not be negative"),
     ],
 )

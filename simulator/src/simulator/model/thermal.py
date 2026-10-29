@@ -46,16 +46,26 @@ warm-up and for tracking within the band (van_model.yaml, engine section):
 
 The engine runs for the whole trip, so this law holds on every step of a trip.
 
-Discs, tyres and coolant start at the ambient temperature; carrying their heat over parked and
-ignition-off periods (closed-form cooling, coolant_cooldown_tau for the coolant) comes with the day
-loop (spec section 8).
+While parked (ignition off), discs, tyres and coolant cool towards the ambient in closed form,
+exact for any parked duration t (parked_temperature):
+
+    T' = T_a + (T - T_a) e^(-t/tau)
+
+with the time constant of each law at rest: tau_standstill for the discs (no brake power at
+standstill), the tyre tau (the tyre target at v = 0 is T_a) and coolant_cooldown_tau for the
+coolant (engine off). The ambient is fixed per day and switches at midnight, so a parked period
+that crosses midnight cools piecewise, towards each day's ambient for the time spent in that day.
+The discs and the tyres at rest follow the same law step by step (disc_step, tyre_step), so
+parking for N steps gives the result of N steps at rest. Applying it between trips and days comes
+with the fleet loop; until then every trip starts at the ambient temperature (spec section 8).
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
 
-from simulator.constants import PHYSICS_DT, ZERO_CELSIUS_K
+from simulator.constants import PHYSICS_DT, SECONDS_PER_DAY, ZERO_CELSIUS_K
 from simulator.model.brakes import BrakeParameters, disc_heating_power, held_steps
 from simulator.params import Config
 
@@ -148,6 +158,7 @@ class CoolantParameters:
     thermostat: float  # degC
     load_rise: float  # K, at full pedal
     tau: float  # s, warm-up and tracking in the band
+    cooldown_tau: float  # s, engine off
 
     @classmethod
     def from_model(cls, model: Config) -> "CoolantParameters":
@@ -155,6 +166,7 @@ class CoolantParameters:
             thermostat=model.value("coolant_thermostat_temp"),
             load_rise=model.si("coolant_load_rise"),
             tau=model.si("coolant_warmup_tau"),
+            cooldown_tau=model.si("coolant_cooldown_tau"),
         )
 
 
@@ -168,3 +180,61 @@ def coolant_step(temp: np.ndarray, pedal: np.ndarray, p: CoolantParameters) -> n
     step's accelerator pedal position (%)."""
     target = coolant_target_temperature(pedal, p)
     return target + (temp - target) * np.exp(-PHYSICS_DT / p.tau)
+
+
+def parked_temperature(
+    temp: np.ndarray,
+    off_time: np.ndarray,
+    on_time: np.ndarray,
+    ambients: Sequence[float],
+    tau: float,
+) -> np.ndarray:
+    """Temperatures, degC, at `on_time` of a component parked from `off_time` at `temp` (times in
+    s since the midnight starting day 0, broadcast against `temp`), cooling with time constant
+    `tau` towards ambients[d] for the time spent in day d, days in order."""
+    off, on = np.asarray(off_time, dtype=float), np.asarray(on_time, dtype=float)
+    if np.any(on < off) or np.any(off < 0):
+        raise ValueError("parked times: expected 0 <= off_time <= on_time")
+    temp = np.asarray(temp, dtype=float)
+    # Days overlapping [off, on): a period ending exactly at midnight needs no ambient of the next.
+    first, last = int(off.min() // SECONDS_PER_DAY), int(np.ceil(on.max() / SECONDS_PER_DAY))
+    for day in range(first, last):
+        start, end = day * SECONDS_PER_DAY, (day + 1) * SECONDS_PER_DAY
+        duration = np.clip(on, start, end) - np.clip(off, start, end)
+        temp = ambients[day] + (temp - ambients[day]) * np.exp(-duration / tau)
+    return temp
+
+
+def parked_discs(
+    temp: np.ndarray,
+    off_time: np.ndarray,
+    on_time: np.ndarray,
+    ambients: Sequence[float],
+    p: DiscParameters,
+) -> np.ndarray:
+    """Disc temperatures, degC, (n, 4), after parking; times (n,) as in parked_temperature."""
+    off, on = np.asarray(off_time)[:, None], np.asarray(on_time)[:, None]
+    return parked_temperature(temp, off, on, ambients, p.tau_standstill)
+
+
+def parked_tyres(
+    temp: np.ndarray,
+    off_time: np.ndarray,
+    on_time: np.ndarray,
+    ambients: Sequence[float],
+    p: TyreParameters,
+) -> np.ndarray:
+    """Tyre temperatures, degC, (n, 4), after parking; times (n,) as in parked_temperature."""
+    off, on = np.asarray(off_time)[:, None], np.asarray(on_time)[:, None]
+    return parked_temperature(temp, off, on, ambients, p.tau)
+
+
+def parked_coolant(
+    temp: np.ndarray,
+    off_time: np.ndarray,
+    on_time: np.ndarray,
+    ambients: Sequence[float],
+    p: CoolantParameters,
+) -> np.ndarray:
+    """Coolant temperatures, degC, (n,), engine off; times (n,) as in parked_temperature."""
+    return parked_temperature(temp, off_time, on_time, ambients, p.cooldown_tau)

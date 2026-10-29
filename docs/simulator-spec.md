@@ -231,10 +231,13 @@ Confirmation thresholds are simulator parameters, not values taken from any real
   at rest therefore never steers. This is a property of the drive profile, not of the steering law, which only
   guarantees a zero steering rate in a step where the van does not move: a van pulling away inside a curve ramp
   would turn the wheel from rest, and a real driver may steer at standstill, which the profile never does.
-- Brake disc temperature is an uncalibrated first-order estimate. The discs, the tyres and the
-  coolant start at the ambient temperature; carrying their heat over parked and ignition-off periods
-  (closed-form cooling, `coolant_cooldown_tau` for the coolant) comes with the fleet state and day
-  loop.
+- Brake disc temperature is an uncalibrated first-order estimate. While parked (ignition off), the
+  discs, the tyres and the coolant cool in closed form, `T_a + (T − T_a) · e^(−t/τ)`, with the time
+  constant of each law at rest: `disc_cooling_tau_standstill` (600 s), `tyre_thermal_tau` (1200 s)
+  and `coolant_cooldown_tau` (3600 s, engine off). The ambient switches to the next day's value at
+  midnight, so a period that crosses midnight cools towards each day's ambient in turn. Applying
+  this between trips and days comes with the fleet state and day loop; until then every trip
+  starts at the ambient temperature.
 - The coolant uses one time constant for the warm-up and for tracking within the regulated band; a
   real thermostat regulates faster once open.
 - The engine runs for the whole trip and idles at every stop, delivery stops included (ignition on).

@@ -241,7 +241,7 @@ brakes:
       disc_cooling_tau_reference at disc_cooling_reference_speed: 1/tau(v) = (1 / tau_standstill)
       * (1 + v / v_c), with v_c = reference_speed / (tau_standstill / tau_reference - 1) computed
       in code. Same law on all four discs, which keeps the front/rear temperature rise ratio
-      constant.
+      constant. Also the time constant of the closed-form cooling while parked.
   disc_cooling_tau_reference:
     value: 150
     unit: s

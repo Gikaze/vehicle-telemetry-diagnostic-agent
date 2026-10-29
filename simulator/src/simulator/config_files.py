@@ -249,9 +249,10 @@ def _check_tyres(config: Config) -> None:
 
 def _check_coolant(config: Config) -> None:
     """Target thermostat + load_rise * pedal / 100 and the first-order step need a positive time
-    constant and a non-negative load rise."""
-    if not config.value("coolant_warmup_tau") > 0:
-        raise ConfigError("van_model.yaml: coolant_warmup_tau must be positive")
+    constant and a non-negative load rise; the engine-off cooling a positive time constant."""
+    for name in ("coolant_warmup_tau", "coolant_cooldown_tau"):
+        if not config.value(name) > 0:
+            raise ConfigError(f"van_model.yaml: {name} must be positive")
     if not config.value("coolant_load_rise") >= 0:
         raise ConfigError("van_model.yaml: coolant_load_rise must not be negative")
 
