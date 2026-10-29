@@ -9,6 +9,7 @@ from functools import cache
 from itertools import pairwise
 from pathlib import Path
 
+from simulator.constants import PHYSICS_DT
 from simulator.params import Config, ConfigError, Layout, config_path, load_config
 
 DRIVE_AXLES = ("front", "rear")
@@ -127,7 +128,7 @@ NOISE_FREE = {
 
 SENSORS_LAYOUT = Layout(
     structural={},
-    parameters=frozenset({"noise_clip_sigma", *NOISY_SIGNALS}),
+    parameters=frozenset({"noise_clip_sigma", "noise_block_duration", *NOISY_SIGNALS}),
 )
 
 PLAUSIBILITY_LAYOUT = Layout(
@@ -177,7 +178,9 @@ def load_van_model(path: Path | None = None) -> Config:
 
 
 def load_sensors(path: Path | None = None) -> Config:
-    return load_config(path or config_path("sensors.yaml"), SENSORS_LAYOUT)
+    config = load_config(path or config_path("sensors.yaml"), SENSORS_LAYOUT)
+    _check_noise(config)
+    return config
 
 
 def load_plausibility(path: Path | None = None) -> Config:
@@ -185,6 +188,18 @@ def load_plausibility(path: Path | None = None) -> Config:
     if not config.value("disc_front_rear_ratio_min") < config.value("disc_front_rear_ratio_max"):
         raise ConfigError("plausibility.yaml: disc_front_rear_ratio_min must be below the maximum")
     return config
+
+
+def _check_noise(config: Config) -> None:
+    """A positive clip and sigmas; the noise block a positive whole number of physics steps."""
+    for name in ("noise_clip_sigma", *NOISY_SIGNALS):
+        if not config.value(name) > 0:
+            raise ConfigError(f"sensors.yaml: {name} must be positive")
+    steps = config.si("noise_block_duration") / PHYSICS_DT
+    if not (steps >= 1 and abs(steps - round(steps)) <= 1e-9):
+        raise ConfigError(
+            "sensors.yaml: noise_block_duration must be a positive whole number of physics steps"
+        )
 
 
 def _check_drive_axle(config: Config) -> None:

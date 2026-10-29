@@ -1,4 +1,4 @@
-"""Semantic checks of the vehicle model and plausibility configuration files."""
+"""Semantic checks of the vehicle model, sensor and plausibility configuration files."""
 
 from itertools import pairwise
 from pathlib import Path
@@ -11,6 +11,7 @@ from simulator.config_files import (
     NOISE_FREE,
     NOISY_SIGNALS,
     load_plausibility,
+    load_sensors,
     load_van_model,
     sensors,
 )
@@ -186,4 +187,43 @@ def test_every_numeric_signal_is_noisy_or_noise_free_with_a_reason() -> None:
     assert numeric - set(noisy) == set(NOISE_FREE)
     assert set(noisy) <= numeric
     assert all(isinstance(reason, str) and reason.strip() for reason in NOISE_FREE.values())
-    assert set(sensors().parameters) == {"noise_clip_sigma", *NOISY_SIGNALS}
+    assert set(sensors().parameters) == {
+        "noise_clip_sigma",
+        "noise_block_duration",
+        *NOISY_SIGNALS,
+    }
+
+
+def sensors_copy(tmp_path: Path, group: str, name: str, value) -> Path:
+    document = yaml.safe_load(config_path("sensors.yaml").read_text())
+    document[group][name]["value"] = value
+    path = tmp_path / "sensors.yaml"
+    path.write_text(yaml.safe_dump(document))
+    return path
+
+
+@pytest.mark.parametrize(
+    ("group", "name", "value", "message"),
+    [
+        ("noise", "noise_clip_sigma", 0, "noise_clip_sigma must be positive"),
+        ("noise_sigma", "yaw_rate", -0.1, "yaw_rate must be positive"),
+        # 6.05 s is 60.5 steps: a block must be a whole number of steps.
+        ("noise", "noise_block_duration", 6.05, "whole number of physics steps"),
+        ("noise", "noise_block_duration", 0, "whole number of physics steps"),
+    ],
+)
+def test_sensor_checks_reject(
+    tmp_path: Path, group: str, name: str, value: float, message: str
+) -> None:
+    with pytest.raises(ConfigError, match=message):
+        load_sensors(sensors_copy(tmp_path, group, name, value))
+
+
+def test_noise_sigmas_are_in_the_catalogue_units() -> None:
+    """A sigma is added in the unit of its signals (K for a temperature in degC)."""
+    signal = catalogue().signal
+    for group, names in NOISY_SIGNALS.items():
+        unit = sensors().parameters[group].unit
+        for name in names:
+            expected = "K" if signal(name).unit == "degC" else signal(name).unit
+            assert unit == expected, (group, name)

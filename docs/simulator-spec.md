@@ -29,7 +29,10 @@ parking brake, gearbox, lighting, body, battery, GNSS.
   by its ID, so the same seed gives the same trip and adding a vehicle does not change the other
   vehicles' trips (FR-02).
 - **Vehicle model:** true physical states updated every 0.1 s.
-- **Sensor layer:** converts true states into measured signals (noise, resolution, estimation).
+- **Sensor layer:** converts true states into measured signals in catalogue units: Gaussian noise clipped at
+  `noise_clip_sigma` for the noisy signals (`simulator/config/sensors.yaml`), then quantisation to the catalogue
+  resolution and saturation to its range. Noise comes from each vehicle's own stream per day and trip, drawn in
+  blocks.
 - **Fault overlay:** modifies states or signals when a scenario is active.
 - **Aggregator:** summarises each 10 s window and emits immediate event messages.
 - **Transport:** adds sequence numbers and realistic delivery defects, then publishes (Kinesis locally,
@@ -193,6 +196,14 @@ Confirmation thresholds are simulator parameters, not values taken from any real
   with the shortest curvature ramp: `curve_transition_time_min` = 2 s (the cap `R · angle / v` is never shorter,
   at least 2.47 s for downhill bends), so `ψ̈ = v / (R · t)` = 0.224 rad/s². The extra terms then reach 0.34 to
   0.44 m/s² on `a_y` on the ramps and −0.30 to −0.40 m/s² on `a_x` in the arc.
+- Sensor noise is Gaussian, white and unbiased, clipped at 3 σ, so every measurement error of a true value inside the
+  catalogue range is at most 3 σ plus half the resolution. There is no offset, drift or filtering (the coolant σ
+  stands for the ECU's filtered reading). A wheel speed sensor reads exactly 0 at standstill. Readings saturate at
+  the range bounds: a released brake (0 bar) reads 0 to 0.6 bar and a released accelerator 0 to 0.6 %, exactly 0
+  in about 60 % of the samples; `brake_pedal_pressed` comes from the brake light switch on the true pressure, not
+  from this reading.
+- `accel_long` reads the derivative of the speed, `dv/dt`. A real accelerometer on a grade also reads the gravity
+  component along the road, `g · sin(atan(grade))` (about 1 m/s² on a 10 % grade); the model leaves it out.
 - Brake pedal at stops: whenever the van is at rest (speed 0 at both ends of a step) outside a delivery stop,
   the driver holds `max(standstill_brake_pressure, brake_pressure_gain · F_hold / brake_reference_mass)`, with
   `F_hold = m · g · |sin(atan(grade))|`. `standstill_brake_pressure` (10 bar) is checked at load to hold the laden

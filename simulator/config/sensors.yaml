@@ -2,8 +2,10 @@
 #
 # Noise is Gaussian with standard deviation sigma, clipped at +/- noise_clip_sigma * sigma (a sample
 # beyond the bound is set to the bound, not redrawn, so every step consumes the same number of
-# draws), and every measurement error is bounded: |measured - true| <= noise_clip_sigma * sigma +
-# resolution / 2.
+# draws). The noisy value is then quantised and saturated to the catalogue range, whose bounds lie
+# on the grid, so for a true value inside the range every measurement error is bounded:
+# |measured - true| <= noise_clip_sigma * sigma + resolution / 2 (sensors.py, error_bound).
+# Sigmas are in the catalogue unit of their signals (K for a temperature in degC).
 # Invariant tests use that bound as their tolerance, so they never fail on a statistical outlier.
 # Every numeric catalogue signal is listed here with its sigma, or is noise-free in the code with a
 # stated reason (estimates computed by an ECU, fixed or integrated values).
@@ -18,6 +20,15 @@ noise:
       test tolerances deterministic. About 0.27 % of samples lie beyond 3 sigma and sit exactly at
       +/- 3 sigma after clipping, so about 24 % of the 10 s windows of a signal (100 samples:
       1 - 0.9973^100 = 0.237) contain a sample at that bound.
+  noise_block_duration:
+    value: 60
+    unit: s
+    rationale: >-
+      Duration of driving whose noise is drawn at once from a vehicle's SENSOR_NOISE stream of
+      the trip (600 steps of 22 standard normal draws), so the fleet loop draws per vehicle in
+      blocks, not per step. Performance only: a block continues the stream where the previous
+      one ended, so the block size changes no measured value (tested). Must be a whole number of
+      physics steps.
 
 noise_sigma:
   wheel_speed:

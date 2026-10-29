@@ -11,7 +11,7 @@ from driven import drive_with_steering, slip_bound
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from simulator.catalogue import catalogue, quantise
+from simulator.catalogue import catalogue
 from simulator.config_files import sensors, van_model
 from simulator.constants import PHYSICS_DT
 from simulator.model.brakes import (
@@ -49,6 +49,7 @@ from simulator.profile_config import (
     drive_profile,
     duty_cycle,
 )
+from simulator.sensors import SensorParameters, error_bound, from_catalogue_unit, measure_signal
 
 KMH = 1 / 3.6
 FLAGS = ("ABS", "TCS", "ESC")
@@ -69,39 +70,47 @@ def params() -> EcuParameters:
     return EcuParameters.from_model(van_model())
 
 
-def noise_bounds() -> tuple[float, float, float]:
-    """3 sigma (the clip) of the wheel speed, m/s, yaw rate, rad/s, and steering angle, rad."""
-    clip, noise = sensors().value("noise_clip_sigma"), sensors()
-    return (
-        clip * noise.si("wheel_speed"),
-        clip * noise.si("yaw_rate"),
-        clip * noise.si("steering_wheel_angle"),
-    )
+WHEEL_SIGNALS = ("wheel_speed_fl", "wheel_speed_fr", "wheel_speed_rl", "wheel_speed_rr")
+
+
+def sensor_params() -> SensorParameters:
+    return SensorParameters.from_configs(sensors(), catalogue())
 
 
 def error_bounds() -> tuple[float, float, float]:
-    """Largest measurement error, 3 sigma plus half the resolution, in the units above."""
-    wheel, yaw, angle = noise_bounds()
-    signal = catalogue().signal
+    """Largest measurement error of the sensor layer (error_bound: 3 sigma plus half the
+    resolution) of the wheel speed, m/s, yaw rate, rad/s, and steering angle, rad."""
+    s = sensor_params()
     return (
-        wheel + signal("wheel_speed_fl").resolution / 2 * KMH,
-        yaw + math.radians(signal("yaw_rate").resolution / 2),
-        angle + math.radians(signal("steering_wheel_angle").resolution / 2),
+        error_bound("wheel_speed_fl", s) * KMH,
+        math.radians(error_bound("yaw_rate", s)),
+        math.radians(error_bound("steering_wheel_angle", s)),
     )
 
 
 def measure(
     readings: np.ndarray, yaw: np.ndarray, angle: np.ndarray, signs: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Sensor path: the true value plus sign * 3 sigma, quantised to the catalogue resolution in
-    catalogue units (km/h, deg/s, deg), back in SI units. A wheel at rest reads exactly 0."""
-    wheel_noise, yaw_noise, angle_noise = noise_bounds()
+    """Sensor layer (measure_signal) with every draw at sign * noise_clip_sigma, i.e. the true
+    value plus sign * 3 sigma, encoded in catalogue units (km/h, deg/s, deg), back in SI units. A
+    wheel at rest reads exactly 0."""
+    s = sensor_params()
     signal = catalogue().signal
-    kmh = quantise((readings + signs[..., :4] * wheel_noise) / KMH, signal("wheel_speed_fl"))
-    wheels = np.where(readings == 0, 0.0, kmh * KMH)
-    deg_s = quantise(np.degrees(yaw + signs[..., 4] * yaw_noise), signal("yaw_rate"))
-    deg = quantise(np.degrees(angle + signs[..., 5] * angle_noise), signal("steering_wheel_angle"))
-    return wheels, np.radians(deg_s), np.radians(deg)
+    z = signs * s.clip
+    wheels = np.stack(
+        [
+            measure_signal(name, readings[..., j], z[..., j], s)
+            for j, name in enumerate(WHEEL_SIGNALS)
+        ],
+        axis=-1,
+    )
+    deg_s = measure_signal("yaw_rate", yaw, z[..., 4], s)
+    deg = measure_signal("steering_wheel_angle", angle, z[..., 5], s)
+    return (
+        from_catalogue_unit(wheels, signal("wheel_speed_fl")),
+        from_catalogue_unit(deg_s, signal("yaw_rate")),
+        from_catalogue_unit(deg, signal("steering_wheel_angle")),
+    )
 
 
 def flags(
