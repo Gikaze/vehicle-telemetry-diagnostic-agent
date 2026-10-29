@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from decimal import Decimal
-from functools import cache
+from functools import cache, cached_property
 from pathlib import Path
 from typing import Any, Literal
 
@@ -63,9 +63,10 @@ class Signal:
     def is_number(self) -> bool:
         return self.type == "number"
 
-    @property
+    @cached_property
     def decimals(self) -> int:
-        """Number of decimal places of the resolution (0.01 -> 2, 0.5 -> 1, 1 -> 0)."""
+        """Number of decimal places of the resolution (0.01 -> 2, 0.5 -> 1, 1 -> 0); computed on
+        first use and kept, since quantise needs it for every encoded value."""
         if self.resolution is None:
             raise ValueError(f"{self.name} has no resolution")
         exponent = Decimal(str(self.resolution)).normalize().as_tuple().exponent

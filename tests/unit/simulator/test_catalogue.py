@@ -1,5 +1,6 @@
 """FR-16: the signal catalogue is complete, consistent and encodes every value it declares."""
 
+import dataclasses
 import re
 from pathlib import Path
 
@@ -218,6 +219,22 @@ def test_quantise_rounds_to_the_decimal_literal() -> None:
     signal = catalogue().signal("accel_pedal_position")
     assert 1023 * 0.1 == 102.30000000000001  # the float hazard this guards against
     assert quantise(np.array([102.3, 0.07, 12.34]), signal).tolist() == [102.3, 0.1, 12.3]
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [("wheel_speed_fl", 2), ("master_cyl_pressure", 1), ("ambient_temp", 1), ("engine_speed", 0)],
+)
+def test_decimals_are_computed_once_and_kept(name: str, expected: int) -> None:
+    """Resolutions 0.01, 0.1, 0.5 and 1. The value is kept on the signal after first use, and a
+    kept value changes neither equality nor hash (they compare the catalogue fields only)."""
+    signal = load_catalogue().signal(name)
+    assert "decimals" not in signal.__dict__
+    assert signal.decimals == expected
+    assert signal.__dict__["decimals"] == expected
+    fresh = dataclasses.replace(signal)
+    assert "decimals" not in fresh.__dict__
+    assert fresh == signal and hash(fresh) == hash(signal)
 
 
 def test_quantise_applies_a_negative_offset() -> None:
