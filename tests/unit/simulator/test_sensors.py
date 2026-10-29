@@ -6,7 +6,7 @@ import math
 
 import numpy as np
 import pytest
-from driven import DrivenTrip, drive_with_steering
+from driven import DrivenTrip, drive_with_steering, lateral_tolerance
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
@@ -268,15 +268,9 @@ COLUMN = {name: j for j, name in enumerate(CHANNELS)}
 def lateral_residual(
     driven: DrivenTrip, radius_factor: float, z: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
-    """(|a_m - v_m psi_m|, tolerance) on every step of a driven trip measured with draws z.
-
-    v_m is the mean of the two measured rear wheel speeds, whose true value is
-    v (1 + slip_rear) r_nom / r (the yaw offsets cancel). With a = v psi, the propagated error is
-
-        |a_m - v_m psi_m| <= eps_a + |v| eps_psi + |psi| eps_v + eps_v eps_psi
-
-    eps_a and eps_psi the error bounds of accel_lat and yaw_rate (rad/s), eps_v the wheel speed
-    error bound plus |v| |(1 + slip_rear) r_nom / r - 1| (rear slip and tyre radius bias)."""
+    """(|a_m - v_m psi_m|, tolerance) on every step of a driven trip measured with draws z, v_m
+    the mean of the two measured rear wheel speeds (tolerance: driven.lateral_tolerance, with
+    the rear slip and the tyre radius bias)."""
     p, wheels = params(), WheelParameters.from_model(van_model())
     trace, steering = driven.trace, driven.steering
     n = len(trace.speed)
@@ -295,12 +289,8 @@ def lateral_residual(
     v_m = (
         measured("wheel_speed_rl", readings[:, 2]) + measured("wheel_speed_rr", readings[:, 3])
     ) / 2
-    v, psi = trace.speed, np.abs(steering.yaw_rate)
-    eps_a = error_bound("accel_lat", p)
-    eps_psi = math.radians(error_bound("yaw_rate", p))
     bias = np.abs((1 + slip_rear) * wheels.radius_nominal / radius - 1)
-    eps_v = error_bound("wheel_speed_rl", p) * KMH + v * bias
-    tolerance = eps_a + v * eps_psi + psi * eps_v + eps_v * eps_psi
+    tolerance = lateral_tolerance(trace.speed, steering.yaw_rate, bias, p)
     return np.abs(a_m - v_m * psi_m), tolerance
 
 

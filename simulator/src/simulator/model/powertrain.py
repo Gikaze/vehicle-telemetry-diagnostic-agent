@@ -12,7 +12,8 @@ Engine speed in gear g (1 = first), with the engine turning with the driven rear
 
     n_g = v * (1 + sigma_rear) / r * ratio_g * 60 / (2 pi)
 
-with sigma_rear the rear axle slip (model/wheels.py) and r the vehicle's drawn tyre radius. Each
+with sigma_rear the rear axle slip (model/wheels.py), r the vehicle's drawn tyre radius and v the
+start-of-step speed (the fleet loop's sampling, spec section 4), with that step's slip. Each
 step, before the engine speed is output, the gear schedule selects first gear at rest (v = 0) and
 otherwise shifts at most once: up when n_g > upshift_speed (below top gear), down when
 n_g < downshift_speed (above first gear). The engine speed is idle_speed at rest and

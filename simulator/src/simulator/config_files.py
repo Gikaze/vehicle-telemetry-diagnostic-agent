@@ -123,7 +123,7 @@ NOISE_FREE = {
     "engine_speed": "crankshaft position sensor; quantisation dominates",
     "odometer": "integrated distance kept by the instrument cluster",
     "ambient_temp": "fixed for the simulated day (spec section 3)",
-    "eps_temperature": "nominal in v1.0 (spec section 3)",
+    "eps_temperature": "nominal in v1.0 (spec section 3): the day's ambient, no EPS thermal model",
 }
 
 SENSORS_LAYOUT = Layout(

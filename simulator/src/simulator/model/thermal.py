@@ -56,8 +56,8 @@ standstill), the tyre tau (the tyre target at v = 0 is T_a) and coolant_cooldown
 coolant (engine off). The ambient is fixed per day and switches at midnight, so a parked period
 that crosses midnight cools piecewise, towards each day's ambient for the time spent in that day.
 The discs and the tyres at rest follow the same law step by step (disc_step, tyre_step), so
-parking for N steps gives the result of N steps at rest. Applying it between trips and days comes
-with the fleet loop; until then every trip starts at the ambient temperature (spec section 8).
+parking for N steps gives the result of N steps at rest. The fleet loop (fleet_state.py) applies
+it at every trip start; only the first trip of a simulation starts at the ambient temperature.
 """
 
 from collections.abc import Sequence

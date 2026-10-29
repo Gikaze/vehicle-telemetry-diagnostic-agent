@@ -28,7 +28,8 @@ parking brake, gearbox, lighting, body, battery, GNSS.
   duration drawn from random streams derived from one root seed: each vehicle has its own streams, keyed
   by its ID, so the same seed gives the same trip and adding a vehicle does not change the other
   vehicles' trips (FR-02).
-- **Vehicle model:** true physical states updated every 0.1 s.
+- **Vehicle model:** true physical states updated every 0.1 s, carried by the fleet loop across trips and days
+  (section 4, Sampling).
 - **Sensor layer:** converts true states into measured signals in catalogue units: Gaussian noise clipped at
   `noise_clip_sigma` for the noisy signals (`simulator/config/sensors.yaml`), then quantisation to the catalogue
   resolution and saturation to its range. Noise comes from each vehicle's own stream per day and trip, drawn in
@@ -65,6 +66,16 @@ chassis codes are manufacturer-specific in practice, so the simulator uses **fic
 
 Updated every `DT = 0.1 s`. Parameters (wheelbase, track, steering ratio, thermal constants) live in a per-model
 configuration, with small per-vehicle variation so no two vans are identical.
+
+**Sampling.** The fleet loop (`simulator/src/simulator/fleet_state.py`) emits one sample per step `k` of each
+vehicle with a trip in progress, describing `t_k`, the start of the step. Instantaneous states are their values
+at `t_k`: speed, wheel speeds, yaw rate, lateral acceleration, steering angle, temperatures, pressures,
+odometer. Quantities over the step are held over `[t_k, t_k + DT)`: the longitudinal acceleration (the actual
+`(v_(k+1) − v_k) / DT`), steering rate and torques, master cylinder pressure and brake switch, accelerator pedal,
+gear and engine speed (the gear selected from `v_k` with step `k`'s rear slip). The thermal laws give end-of-step
+values; the sample takes the value at `t_k`, and the value after a trip's last step goes into the parked state
+(ignition off, not emitted). A trip starts on the step grid at `floor(shift_start / DT)`, each later one at the
+step after the previous ignition off plus `floor(break / DT)`, so never later than the continuous day plan.
 
 **Reference point:** the centre of the rear axle. The speed `v`, the road curvature `κ` and the curve speed law
 `v_c = sqrt(a_lat,curve · R)` are taken there; the kinematic single-track model then gives the road-wheel angle
@@ -235,9 +246,13 @@ Confirmation thresholds are simulator parameters, not values taken from any real
   discs, the tyres and the coolant cool in closed form, `T_a + (T − T_a) · e^(−t/τ)`, with the time
   constant of each law at rest: `disc_cooling_tau_standstill` (600 s), `tyre_thermal_tau` (1200 s)
   and `coolant_cooldown_tau` (3600 s, engine off). The ambient switches to the next day's value at
-  midnight, so a period that crosses midnight cools towards each day's ambient in turn. Applying
-  this between trips and days comes with the fleet state and day loop; until then every trip
-  starts at the ambient temperature.
+  midnight, so a period that crosses midnight cools towards each day's ambient in turn. The fleet
+  loop applies this at every trip start, from the actual ignition off; the temperatures, gear and
+  odometer carry over between trips and days, and only the first trip of a simulation starts at
+  the ambient temperature.
+- `eps_temperature` reads the day's ambient (no EPS thermal model in v1.0); `eps_derating_active`,
+  `brake_pad_wear_warning` and `brake_fluid_level_warning` are false and `sas_calibrated` true
+  unless a scenario sets them.
 - The coolant uses one time constant for the warm-up and for tracking within the regulated band; a
   real thermostat regulates faster once open.
 - The engine runs for the whole trip and idles at every stop, delivery stops included (ignition on).

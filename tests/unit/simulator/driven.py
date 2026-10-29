@@ -1,6 +1,7 @@
 """Shared test helper: drive a few trips and compute their steering, for model invariant tests;
-the slip bound the configuration allows."""
+the slip bound the configuration allows; the a_lat tolerance on measured signals."""
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -19,6 +20,7 @@ from simulator.model.wheels import WheelParameters, axle_slip
 from simulator.profile.road import Road
 from simulator.profile.speed_plan import DriverParameters
 from simulator.profile_config import drive_profile, trip_overrun_bound
+from simulator.sensors import SensorParameters, error_bound
 
 
 @dataclass(frozen=True)
@@ -71,6 +73,24 @@ def drive_with_steering(
         state = steering_state(kappa[:-1], kappa[1:], trace.speed, p)
         results.append(DrivenTrip(road, trace, float(mass), density, positions, kappa, state))
     return results
+
+
+def lateral_tolerance(
+    speed: np.ndarray, yaw_rate: np.ndarray, rear_bias: np.ndarray, p: SensorParameters
+) -> np.ndarray:
+    """Bound of |a_m - v_m psi_m|, m/s2, with v_m the mean of the measured rear wheel speeds,
+    from the true speed v, yaw rate psi (rad/s) and the rear readings' bias
+    |(1 + slip_rear) r_nom / r - 1| (their true mean is v (1 + slip_rear) r_nom / r, the yaw
+    offsets cancel). With a = v psi:
+
+        |a_m - v_m psi_m| <= eps_a + |v| eps_psi + |psi| eps_v + eps_v eps_psi
+
+    eps_a and eps_psi the error bounds of accel_lat and yaw_rate (rad/s), eps_v the wheel speed
+    error bound (m/s) plus |v| * rear_bias."""
+    eps_a = error_bound("accel_lat", p)
+    eps_psi = math.radians(error_bound("yaw_rate", p))
+    eps_v = error_bound("wheel_speed_rl", p) / 3.6 + np.abs(speed) * rear_bias
+    return eps_a + np.abs(speed) * eps_psi + np.abs(yaw_rate) * eps_v + eps_v * eps_psi
 
 
 def slip_bound(masses: np.ndarray) -> float:
