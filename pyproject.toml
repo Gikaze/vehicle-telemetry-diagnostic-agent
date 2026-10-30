@@ -34,6 +34,8 @@ markers = ["integration: tests that need a running LocalStack (run with make tes
 
 [tool.coverage.run]
 source = ["simulator", "pipeline", "agent"]
+# Command-line tools: thin wrappers (argument parsing, plotting) over tested package functions.
+omit = ["simulator/tools/*"]
 branch = true
 
 [tool.coverage.report]

@@ -6,7 +6,7 @@ from dataclasses import dataclass, field, fields, is_dataclass
 
 import numpy as np
 import pytest
-from driven import lateral_tolerance
+from driven import lateral_tolerance, short_plans
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
@@ -14,34 +14,18 @@ from simulator.catalogue import catalogue
 from simulator.config_files import NOISE_FREE, van_model
 from simulator.constants import PHYSICS_DT, RAD_S_TO_RPM, SECONDS_PER_DAY
 from simulator.fleet import load_fleet
+from simulator.fleet_day import TripTiming, check_trip_overruns
 from simulator.fleet_state import STATIC, FleetSample, FleetSimulation, PlanDay
 from simulator.model import ecu
 from simulator.model.powertrain import select_gear
 from simulator.model.thermal import coolant_target_temperature, disc_cooling_tau
 from simulator.profile.day_plan import DayPlan
+from simulator.profile_config import trip_overrun_bound
 from simulator.sensors import encode, error_bound, from_catalogue_unit, to_catalogue_unit
 
 HOUR = 3600.0
 WHEEL_SPEEDS = ("wheel_speed_fl", "wheel_speed_fr", "wheel_speed_rl", "wheel_speed_rr")
 SUFFIXES = ("fl", "fr", "rl", "rr")
-
-
-def short_plans(durations: list[float], breaks: list[float], start: float = 6 * HOUR) -> PlanDay:
-    """The same trips every day for every vehicle, VAN-<n> starting n * 37 s after `start`."""
-
-    def plan(root_seed: int, vehicle_id: str, day: int) -> DayPlan:
-        shift_start = start + 37.0 * int(vehicle_id.split("-")[1])
-        return DayPlan(
-            vehicle_id=vehicle_id,
-            day=day,
-            shift_start=shift_start,
-            shift_end=shift_start + sum(durations) + sum(breaks),
-            trip_durations=tuple(durations),
-            breaks=tuple(breaks),
-            lunch_after_trip=1 if len(durations) > 1 else 0,
-        )
-
-    return plan
 
 
 @dataclass(frozen=True)
@@ -500,6 +484,20 @@ def check_invariants(run: Run) -> None:
         ambient = np.array([sample.true.ambient.temperature for sample in trip.rows])[:, None]
         rise, next_rise = (temp - ambient)[idle], (after - ambient)[idle]
         assert np.all(np.abs(next_rise) <= np.abs(rise)) and np.all(rise * next_rise >= 0)
+    # No trip runs past its planned duration by more than trip_overrun_bound (one-day runs).
+    timings = tuple(
+        TripTiming(
+            run.sim.vehicle_ids[trip.slot],
+            index,
+            int(trip.steps[0]),
+            int(trip.steps[-1]) + 1,
+            run.sim.plans[trip.slot].trip_durations[index],
+        )
+        for trips in run.trips
+        for index, trip in enumerate(trips)
+    )
+    result = check_trip_overruns(timings, trip_overrun_bound(run.sim.profile))
+    assert result.passed, result.lines
 
 
 def test_loop_invariants_on_the_four_trip_run(run: Run) -> None:

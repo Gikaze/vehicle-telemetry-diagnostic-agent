@@ -55,6 +55,7 @@ make lint       # ruff, terraform fmt -check, tflint, hadolint
 make test       # unit tests with coverage
 make test-int   # integration tests against LocalStack (requires `lstk` running)
 make schema     # regenerate the telemetry JSON Schema from simulator/catalogue.yaml
+make vehicle-day  # run and check one fleet day (10 vans, seed 42), plot docs/assets/m1-vehicle-day.png
 make up         # start LocalStack and local services
 make down       # stop everything
 ```
@@ -168,6 +169,8 @@ Keep the `Co-Authored-By` trailer that Claude Code adds: AI assistance is disclo
 - Do not add features outside the current issue; propose them as a new issue labelled `v2`.
 - Do not disable, skip or weaken tests or linters to make CI pass.
 - Do not commit generated files, local state (`*.tfstate`, `.terraform/`), `.env`, or model weights.
-  One exception: the telemetry schema `simulator/schema/telemetry.schema.json` is committed as the contract
-  with the pipeline, regenerated with `make schema` and checked for drift by a unit test.
+  Two exceptions: the telemetry schema `simulator/schema/telemetry.schema.json` is committed as the contract
+  with the pipeline, regenerated with `make schema` and checked for drift by a unit test; and milestone
+  captures in `docs/assets/` are committed, generated ones included (e.g. `m1-vehicle-day.png`, from
+  `make vehicle-day`).
 - Do not leave TODOs without a linked issue.

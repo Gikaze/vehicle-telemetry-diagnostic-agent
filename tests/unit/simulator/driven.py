@@ -1,5 +1,6 @@
 """Shared test helper: drive a few trips and compute their steering, for model invariant tests;
-the slip bound the configuration allows; the a_lat tolerance on measured signals."""
+the slip bound the configuration allows; the a_lat tolerance on measured signals; short day
+plans for the fleet loop."""
 
 import math
 from dataclasses import dataclass
@@ -8,6 +9,7 @@ import numpy as np
 
 from simulator.config_files import van_model
 from simulator.fleet import Vehicle, VehicleParameters, draw_vehicle_parameters, fleet_config
+from simulator.fleet_state import PlanDay
 from simulator.model.drive import Trace, drive_trips
 from simulator.model.forces import air_density
 from simulator.model.longitudinal import (
@@ -17,6 +19,7 @@ from simulator.model.longitudinal import (
 )
 from simulator.model.steering import CurveTracker, SteeringParameters, SteeringState, steering_state
 from simulator.model.wheels import WheelParameters, axle_slip
+from simulator.profile.day_plan import DayPlan
 from simulator.profile.road import Road
 from simulator.profile.speed_plan import DriverParameters
 from simulator.profile_config import drive_profile, trip_overrun_bound
@@ -116,3 +119,21 @@ def slip_bound(masses: np.ndarray) -> float:
         bound, *(np.max(np.abs(s)) for s in axle_slip(forces.engine, forces.brake, masses, p))
     )
     return float(bound)
+
+
+def short_plans(durations: list[float], breaks: list[float], start: float = 6 * 3600.0) -> PlanDay:
+    """The same trips every day for every vehicle, VAN-<n> starting n * 37 s after `start`."""
+
+    def plan(root_seed: int, vehicle_id: str, day: int) -> DayPlan:
+        shift_start = start + 37.0 * int(vehicle_id.split("-")[1])
+        return DayPlan(
+            vehicle_id=vehicle_id,
+            day=day,
+            shift_start=shift_start,
+            shift_end=shift_start + sum(durations) + sum(breaks),
+            trip_durations=tuple(durations),
+            breaks=tuple(breaks),
+            lunch_after_trip=1 if len(durations) > 1 else 0,
+        )
+
+    return plan

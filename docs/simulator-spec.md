@@ -191,7 +191,11 @@ Confirmation thresholds are simulator parameters, not values taken from any real
    shared with FR-06).
 4. **Scenario tests:** each fault model produces its expected signature, and only that one.
 5. **Expert review:** a plot of one simulated vehicle-day (speed, accelerations, temperatures, pressures) is
-   published in `docs/assets/` and reviewed by a domain expert before v1.0.
+   published in `docs/assets/` and reviewed by a domain expert before v1.0. `make vehicle-day` runs one fleet
+   day (10 vans, seed 42), checks that every van's last ignition off is before `shift_end_latest`, that no trip
+   overruns its plan by more than `trip_overrun_bound` and that no emitted value is NaN, and plots VAN-001's day
+   to `docs/assets/m1-vehicle-day.png`: a full-day overview and two 3-minute zooms (hottest front disc, a
+   delivery stop of that trip).
 
 ## 8. Assumptions and limits
 
