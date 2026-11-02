@@ -3,10 +3,12 @@
     uv run python simulator/tools/vehicle_day.py --seed 42 --vehicles 10 --vehicle VAN-001 \
         --out docs/assets/m1-vehicle-day.png
 
-The run, the checks and the exit status come from simulator.fleet_day; this script parses the
-arguments and draws the figure: a full-day overview of the emitted signals (parked periods
-shaded, delivery stops marked) and two 3-minute zooms, around the hottest front disc and around
-a delivery stop of that trip, with true values where the noise hides a coupling. The PNG carries
+The run, the checks, the day summary and the exit status come from simulator.fleet_day; this
+script parses the arguments, prints them and draws the figure: a full-day overview of the emitted
+signals (parked periods shaded, lunch labelled, delivery stops marked; tyre temperatures and
+pressures as 10 s means, the raw 10 Hz noise would fill their panels) and two 3-minute zooms,
+around the hottest front disc and around a delivery stop of that trip, with true values where
+the noise hides a coupling. Legends sit above their panels, never over data. The PNG carries
 no metadata (Agg writes no date; the Software entry is removed), so the same seed and lockfile
 give the same bytes. Exit status 1 if a check fails; the PNG is written either way.
 """
@@ -33,6 +35,7 @@ from simulator.fleet_day import (  # noqa: E402
     check_no_nan,
     check_trip_overruns,
     clock_time,
+    day_summary,
     delivery_window,
     describe_window,
     exit_status,
@@ -43,6 +46,10 @@ from simulator.fleet_day import (  # noqa: E402
 from simulator.profile_config import drive_profile, duty_cycle, trip_overrun_bound  # noqa: E402
 
 ZOOM = 180.0  # s
+MEAN_STEPS = (
+    100  # 10 s means of the noise-dominated overview signals (tyre temperatures, pressures)
+)
+OVERVIEW = 5  # overview panels; then 7 zoom panels in each of two columns
 SUFFIXES = ("fl", "fr", "rl", "rr")
 WHEEL_COLOURS = ("tab:blue", "tab:orange", "tab:green", "tab:red")
 
@@ -69,6 +76,34 @@ def broken(x: np.ndarray, y: np.ndarray, steps: np.ndarray) -> tuple[np.ndarray,
     return np.insert(x, gaps, np.nan), np.insert(y.astype(float), gaps, np.nan)
 
 
+def means(steps: np.ndarray, values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Means over MEAN_STEPS consecutive steps within each trip (a trip's last bin may be
+    shorter), at the bin centre in hours, with a NaN between trips."""
+    xs: list[np.ndarray] = []
+    ys: list[np.ndarray] = []
+    edges = np.flatnonzero(np.diff(steps) > 1) + 1
+    for trip_steps, trip_values in zip(
+        np.split(steps, edges), np.split(values, edges), strict=True
+    ):
+        starts = np.arange(0, trip_values.size, MEAN_STEPS)
+        counts = np.diff(np.append(starts, trip_values.size))
+        xs += [np.add.reduceat(trip_steps.astype(float), starts) / counts, np.array([np.nan])]
+        ys += [np.add.reduceat(trip_values, starts) / counts, np.array([np.nan])]
+    return np.concatenate(xs) * PHYSICS_DT / 3600, np.concatenate(ys)
+
+
+def legend_above(ax: Axes, ncol: int) -> None:
+    """Legend in one block above the axes, never over the data."""
+    ax.legend(
+        loc="lower left",
+        bbox_to_anchor=(0.0, 1.0),
+        ncol=ncol,
+        fontsize=7,
+        frameon=False,
+        borderaxespad=0.2,
+    )
+
+
 def shade(ax: Axes, x: np.ndarray, mask: np.ndarray, colour: str, label: str | None) -> None:
     ax.fill_between(
         x,
@@ -84,18 +119,20 @@ def shade(ax: Axes, x: np.ndarray, mask: np.ndarray, colour: str, label: str | N
     )
 
 
-def overview(fig, gs, rec: Recording) -> None:
+def overview(fig, gs, rec: Recording, lunch_after_trip: int) -> None:
     steps = rec.steps
     hours = steps * PHYSICS_DT / 3600
     trips = rec["trip"].astype(int)
     delivery = rec["at_delivery"] > 0
     rest = np.flatnonzero(np.diff(np.concatenate([[0], delivery.astype(int)])) == 1)
-    axes = [fig.add_subplot(gs[i, :]) for i in range(4)]
+    axes = [fig.add_subplot(gs[i, :]) for i in range(OVERVIEW)]
     for ax in axes[1:]:
         ax.sharex(axes[0])
+    parked = [
+        (hours[trips == trip][-1], hours[trips == trip + 1][0]) for trip in range(trips.max())
+    ]
     for ax in axes:
-        for trip in range(trips.max()):
-            end, start = hours[trips == trip][-1], hours[trips == trip + 1][0]
+        for end, start in parked:
             ax.axvspan(end, start, color="0.85", lw=0)
         ax.grid(alpha=0.3)
     ax = axes[0]
@@ -106,13 +143,23 @@ def overview(fig, gs, rec: Recording) -> None:
     for trip in range(trips.max() + 1):
         ax.annotate(
             f"trip {trip + 1}",
-            (hours[trips == trip][0], 1.02),
+            (hours[trips == trip][0], 0.93),
             xycoords=("data", "axes fraction"),
             fontsize=8,
         )
+    if 1 <= lunch_after_trip <= len(parked):
+        end, start = parked[lunch_after_trip - 1]
+        ax.annotate(
+            "lunch",
+            ((end + start) / 2, 0.5),
+            xycoords=("data", "axes fraction"),
+            ha="center",
+            rotation=90,
+            fontsize=8,
+        )
     ax.set_ylabel("vehicle_ref_speed\nkm/h")
-    ax.legend(loc="upper right", fontsize=8)
-    ax.set_title(f"{rec.vehicle_id}: one day (emitted values; parked periods shaded)", pad=14)
+    legend_above(ax, 1)
+    ax.set_title(f"{rec.vehicle_id}: one day (emitted values; parked periods shaded)", pad=18)
     ax = axes[1]
     for suffix, colour in zip(SUFFIXES, WHEEL_COLOURS, strict=True):
         ax.plot(
@@ -124,28 +171,21 @@ def overview(fig, gs, rec: Recording) -> None:
     ax.plot(*broken(hours, rec["coolant_temp"], steps), lw=0.6, color="tab:purple", label="coolant")
     ax.plot(*broken(hours, rec["ambient_temp"], steps), lw=0.8, color="0.4", label="ambient")
     ax.set_ylabel("temperature\ndegC")
-    ax.legend(loc="upper right", fontsize=8, ncol=6)
-    ax = axes[2]
-    right = ax.twinx()
-    for suffix, colour in zip(SUFFIXES, WHEEL_COLOURS, strict=True):
-        ax.plot(
-            *broken(hours, rec[f"tyre_temp_{suffix}"], steps),
-            lw=0.4,
-            color=colour,
-            label=f"tyre temp {suffix}",
-        )
-        right.plot(
-            *broken(hours, rec[f"tyre_pressure_{suffix}"], steps),
-            lw=0.4,
-            color=colour,
-            ls="--",
-            label=f"pressure {suffix}",
-        )
-    ax.set_ylabel("tyre temperature\ndegC (solid)")
-    right.set_ylabel("tyre pressure\nbar (dashed)")
-    ax = axes[3]
+    legend_above(ax, 6)
+    for ax, name, label in (
+        (axes[2], "tyre_temp", "tyre temperature\ndegC, 10 s means"),
+        (axes[3], "tyre_pressure", "tyre pressure\nbar, 10 s means"),
+    ):
+        for suffix, colour in zip(SUFFIXES, WHEEL_COLOURS, strict=True):
+            ax.plot(
+                *means(steps, rec[f"{name}_{suffix}"]), lw=0.8, color=colour, label=f"tyre {suffix}"
+            )
+        ax.set_ylabel(label)
+        legend_above(ax, 4)
+    ax = axes[4]
     ax.plot(*broken(hours, rec["odometer"], steps), lw=0.8, color="k")
     ax.set_ylabel("odometer\nkm")
+    ax.ticklabel_format(axis="y", style="plain", useOffset=False)
     ax.set_xlabel("time of day, h")
 
 
@@ -156,7 +196,7 @@ def zoom(fig, gs, column: int, rec: Recording, start: int, title: str) -> None:
     def get(name: str) -> np.ndarray:
         return rec[name][rows]
 
-    axes = [fig.add_subplot(gs[4 + i, column]) for i in range(7)]
+    axes = [fig.add_subplot(gs[OVERVIEW + i, column]) for i in range(7)]
     for ax in axes[1:]:
         ax.sharex(axes[0])
     delivery, held = get("at_delivery") > 0, get("held") > 0
@@ -171,15 +211,15 @@ def zoom(fig, gs, column: int, rec: Recording, start: int, title: str) -> None:
     ax.plot(t, get("vehicle_ref_speed"), lw=1.0, color="k", label="vehicle_ref_speed")
     ax.plot(t, get("true_speed"), lw=1.0, color="tab:purple", ls="--", label="true speed")
     ax.set_ylabel("speed\nkm/h")
-    ax.legend(loc="upper right", fontsize=7, ncol=4)
-    ax.set_title(title)
+    legend_above(ax, 4)
+    ax.set_title(title, pad=30)
     ax = axes[1]
     ax.plot(t, get("accel_long"), lw=0.5, color="tab:blue", label="accel_long")
     ax.plot(t, get("true_accel_long"), lw=0.8, color="navy", label="true accel_long")
     ax.plot(t, get("accel_lat"), lw=0.5, color="tab:red", label="accel_lat")
     ax.plot(t, get("true_accel_lat"), lw=0.8, color="darkred", label="true accel_lat")
     ax.set_ylabel("acceleration\nm/s2")
-    ax.legend(loc="upper right", fontsize=7, ncol=4)
+    legend_above(ax, 4)
     ax = axes[2]
     shade(ax, t, get("brake_pedal_pressed") > 0, "tab:green", "brake_pedal_pressed")
     ax.plot(t, get("master_cyl_pressure"), lw=0.6, color="k", label="master_cyl_pressure")
@@ -188,7 +228,7 @@ def zoom(fig, gs, column: int, rec: Recording, start: int, title: str) -> None:
     )
     ax.axhline(2.0, lw=0.8, color="tab:green", ls=":", label="switch 2 bar")
     ax.set_ylabel("brake pressure\nbar")
-    ax.legend(loc="upper right", fontsize=7, ncol=2)
+    legend_above(ax, 4)
     ax = axes[3]
     ax.plot(t, get("accel_pedal_position"), lw=0.6, color="k")
     ax.set_ylabel("accel_pedal_position\n%")
@@ -211,27 +251,29 @@ def zoom(fig, gs, column: int, rec: Recording, start: int, title: str) -> None:
             t, get(f"brake_disc_temp_est_{suffix}"), lw=0.8, color=colour, label=f"disc {suffix}"
         )
     ax.set_ylabel("disc temperature\ndegC")
-    ax.legend(loc="upper left", fontsize=7, ncol=4)
+    legend_above(ax, 4)
     ax.set_xlabel("s after the window start")
 
 
-def plot(rec: Recording, zoom_a: int, zoom_b: int, out: Path, seed: int) -> None:
+def plot(
+    rec: Recording, zoom_a: int, zoom_b: int, out: Path, seed: int, lunch_after_trip: int
+) -> None:
     matplotlib.rcdefaults()
     plt.rcParams.update({"font.family": "DejaVu Sans", "font.size": 9})
-    fig = plt.figure(figsize=(16, 26), dpi=100)
+    fig = plt.figure(figsize=(16, 30), dpi=100)
     gs = GridSpec(
-        11,
+        OVERVIEW + 7,
         2,
         figure=fig,
-        height_ratios=[1.2, 1, 1, 0.6] + [1] * 7,
-        hspace=0.45,
+        height_ratios=[1.2, 1, 1, 1, 0.6] + [1] * 7,
+        hspace=0.6,
         wspace=0.25,
         top=0.965,
         bottom=0.025,
         left=0.07,
         right=0.93,
     )
-    overview(fig, gs, rec)
+    overview(fig, gs, rec, lunch_after_trip)
     for column, (label, start) in enumerate((("a", zoom_a), ("b", zoom_b))):
         when = clock_time(start * PHYSICS_DT)
         rule = "hottest front disc" if label == "a" else "delivery stop"
@@ -256,6 +298,8 @@ def main(argv: list[str] | None = None) -> int:
         f"loop {day.loop_seconds:.1f} s"
     )
     print("\n".join(lines))
+    print("day summary (not checked):")
+    print("\n".join(f"  {line}" for line in day_summary(day)))
     rec = day.recording
     assert rec is not None
     if args.zoom_a_start is None:
@@ -271,7 +315,7 @@ def main(argv: list[str] | None = None) -> int:
         print(describe_window(rec, label, start, ZOOM) + f" (start {start * PHYSICS_DT:.1f} s)")
     clock = time.perf_counter()
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    plot(rec, zoom_a, zoom_b, args.out, args.seed)
+    plot(rec, zoom_a, zoom_b, args.out, args.seed, day.plans[args.vehicle].lunch_after_trip)
     print(f"plot {time.perf_counter() - clock:.1f} s: {args.out}, {args.out.stat().st_size} bytes")
     return status
 

@@ -7,7 +7,11 @@ without storing the samples:
 - the first step of any NaN in an emitted numeric signal, per vehicle and signal (only the slots
   with a trip in progress are emitted);
 - every step of one vehicle in progress: its emitted signals and a few true states, for the
-  vehicle-day plot of spec section 7 (simulator/tools/vehicle_day.py).
+  vehicle-day plot of spec section 7 (simulator/tools/vehicle_day.py);
+- per vehicle, the true distance driven (the position at each ignition off, summed: the emitted
+  odometer carries the tyre radius bias and the slip and is quantised to 0.1 km) and the number
+  of delivery stops (each time the van comes to be held at one); day_summary prints them, with
+  no effect on the exit status.
 
 The checks return their verdict with the lines to print, and exit_status turns them into the
 tool's exit status:
@@ -111,6 +115,9 @@ class FleetDay:
     nan_first: dict[tuple[str, str], int]  # (vehicle ID, signal): first step with a NaN
     numeric_signals: int  # emitted numeric signals checked for NaN, per vehicle
     samples: int
+    distance: dict[str, float]  # m, true distance driven (position at each ignition off, summed)
+    odometer_change: dict[str, float]  # m, change of the true odometer state over the day
+    delivery_stops: dict[str, int]  # times each vehicle came to be held at a delivery stop
     recording: Recording | None
     loop_seconds: float  # compute time of the loop, checks and recording included
 
@@ -133,12 +140,20 @@ def run_fleet_day(
     trip = np.zeros(sim.n, dtype=int)
     trips: list[TripTiming] = []
     nan_first: dict[tuple[str, str], int] = {}
+    distance = np.zeros(sim.n)
+    deliveries = np.zeros(sim.n, dtype=int)
+    delivering = np.zeros(sim.n, dtype=bool)
+    odometer_start = sim.odometer.copy()
     samples = 0
     clock = time.perf_counter()
     for sample in sim.run(1):
         samples += 1
         k = sample.step
         start[sample.active & (start < 0)] = k
+        held_at_delivery = sample.active & sample.true.drive.at_delivery
+        deliveries += held_at_delivery & ~delivering
+        delivering = held_at_delivery
+        distance += np.where(sample.ended, sample.true.drive.next_position, 0.0)
         values = np.stack([sample.measured[name] for name in numeric], axis=1)
         bad = np.isnan(values) & sample.active[:, None]
         if bad.any():
@@ -167,6 +182,9 @@ def run_fleet_day(
         nan_first=nan_first,
         numeric_signals=len(numeric),
         samples=samples,
+        distance=dict(zip(ids, distance.tolist(), strict=True)),
+        odometer_change=dict(zip(ids, (sim.odometer - odometer_start).tolist(), strict=True)),
+        delivery_stops=dict(zip(ids, deliveries.tolist(), strict=True)),
         recording=recording,
         loop_seconds=loop_seconds,
     )
@@ -239,6 +257,18 @@ def check_no_nan(day: FleetDay) -> CheckResult:
         for (vehicle_id, name), step in sorted(day.nan_first.items())
     )
     return CheckResult("no NaN in an emitted signal", False, lines)
+
+
+def day_summary(day: FleetDay) -> tuple[str, ...]:
+    """Per vehicle: true distance driven, trips, delivery stops, and the odometer's change for
+    comparison (it carries the tyre radius bias and the slip). Not a check."""
+    return tuple(
+        f"{vehicle_id}: {day.distance[vehicle_id] / 1000:.1f} km driven in "
+        f"{sum(t.vehicle_id == vehicle_id for t in day.trips)} trips, "
+        f"{day.delivery_stops[vehicle_id]} delivery stops "
+        f"(odometer {day.odometer_change[vehicle_id] / 1000:+.1f} km)"
+        for vehicle_id in day.plans
+    )
 
 
 def exit_status(results: list[CheckResult]) -> tuple[int, list[str]]:

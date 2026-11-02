@@ -20,22 +20,32 @@ from simulator.fleet_day import (
     check_no_nan,
     check_trip_overruns,
     clock_time,
+    day_summary,
     delivery_window,
     describe_window,
     exit_status,
     hottest_disc_window,
     run_fleet_day,
 )
-from simulator.fleet_state import FleetSimulation
+from simulator.fleet_state import FleetSample, FleetSimulation
 from simulator.profile_config import drive_profile, duty_cycle, trip_overrun_bound
 
-SEED = 5
-TWO_TRIPS = short_plans([120.0, 120.0], [30.0])
+# Seed 24, two vans, trips of 240 s and 120 s: VAN-001 makes a delivery stop and the run has
+# traffic holds (test_day_summary_counts_distance_and_delivery_stops).
+SEED = 24
+TWO_TRIPS = short_plans([240.0, 120.0], [30.0])
 
 
 @pytest.fixture(scope="module")
 def day() -> FleetDay:
     return run_fleet_day(SEED, load_fleet(size=2), record="VAN-001", plan_day=TWO_TRIPS)
+
+
+@pytest.fixture(scope="module")
+def reference() -> tuple[FleetSimulation, list[FleetSample]]:
+    """The same run straight from the fleet loop: the simulation after the day and its samples."""
+    sim = FleetSimulation(SEED, load_fleet(size=2), TWO_TRIPS)
+    return sim, list(sim.run(1))
 
 
 def test_trip_timings_follow_the_loop(day: FleetDay) -> None:
@@ -50,20 +60,22 @@ def test_trip_timings_follow_the_loop(day: FleetDay) -> None:
         assert (first.trip, second.trip) == (0, 1)
         assert first.start_step == math.floor(plan.shift_start / PHYSICS_DT)
         assert second.start_step == first.off_step + math.floor(plan.breaks[0] / PHYSICS_DT)
-        assert first.planned_duration == second.planned_duration == 120.0
+        assert (first.planned_duration, second.planned_duration) == (240.0, 120.0)
     for t in (t for t in day.trips if t.vehicle_id == "VAN-001"):
         steps = rec.steps[rec["trip"] == t.trip]
         assert (steps[0], steps[-1] + 1) == (t.start_step, t.off_step)
 
 
-def test_recording_holds_every_emitted_value_of_one_vehicle(day: FleetDay) -> None:
+def test_recording_holds_every_emitted_value_of_one_vehicle(
+    day: FleetDay, reference: tuple[FleetSimulation, list[FleetSample]]
+) -> None:
     """Row by row, the recording equals the samples of VAN-001 with a trip in progress: every
     emitted signal, and the true speed (km/h), accelerations, pressure (bar), gear, held step and
     delivery hold at the start of the step, bit for bit."""
     rec = day.recording
     assert rec is not None
-    sim = FleetSimulation(SEED, load_fleet(size=2), TWO_TRIPS)
-    rows = [sample for sample in sim.run(1) if sample.active[0]]
+    sim, samples = reference
+    rows = [sample for sample in samples if sample.active[0]]
     assert np.array_equal(rec.steps, [sample.step for sample in rows])
     for name in sim.catalogue.names:
         assert np.array_equal(rec[name], [float(s.measured[name][0]) for s in rows]), name
@@ -80,6 +92,43 @@ def test_recording_holds_every_emitted_value_of_one_vehicle(day: FleetDay) -> No
     for name, get in true.items():
         assert np.array_equal(rec[name], [float(get(s.true)) for s in rows]), name
     assert rec["held"].any() and rec["true_master_cyl_pressure"].max() > 0
+
+
+def test_day_summary_counts_distance_and_delivery_stops(
+    day: FleetDay, reference: tuple[FleetSimulation, list[FleetSample]]
+) -> None:
+    """Per van, from the raw samples of the same run: the distance is the sum of next_position at
+    the steps where a trip ends; a delivery stop is a step held at a delivery stop after a step
+    that was not (traffic holds do not count); the odometer change is the odometer state after
+    the day minus its value in the first sample. The run has a delivery stop and a traffic hold."""
+    sim, samples = reference
+    ids = sim.vehicle_ids
+    distance, stops = dict.fromkeys(ids, 0.0), dict.fromkeys(ids, 0)
+    first_odometer: dict[str, float] = {}
+    delivering, traffic = dict.fromkeys(ids, False), 0
+    for sample in samples:
+        drive = sample.true.drive
+        for i, vehicle_id in enumerate(ids):
+            if not sample.active[i]:
+                delivering[vehicle_id] = False
+                continue
+            first_odometer.setdefault(vehicle_id, float(sample.true.odometer[i]))
+            held = bool(drive.at_delivery[i])
+            stops[vehicle_id] += held and not delivering[vehicle_id]
+            delivering[vehicle_id] = held
+            traffic += bool(drive.stopped[i]) and not held
+            if sample.ended[i]:
+                distance[vehicle_id] += float(drive.next_position[i])
+    assert sum(stops.values()) >= 1 and traffic >= 1
+    assert day.distance == distance
+    assert day.delivery_stops == stops
+    odometer = {v: float(sim.odometer[i]) - first_odometer[v] for i, v in enumerate(ids)}
+    assert day.odometer_change == odometer
+    assert day_summary(day) == tuple(
+        f"{v}: {distance[v] / 1000:.1f} km driven in 2 trips, {stops[v]} delivery stops "
+        f"(odometer {odometer[v] / 1000:+.1f} km)"
+        for v in ids
+    )
 
 
 def test_day_end_passes_up_to_the_bound_and_fails_one_step_before(day: FleetDay) -> None:
