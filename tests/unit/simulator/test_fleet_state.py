@@ -6,7 +6,7 @@ from dataclasses import dataclass, field, fields, is_dataclass
 
 import numpy as np
 import pytest
-from driven import lateral_tolerance, short_plans
+from driven import TEMPERATURE_ATOL, lateral_tolerance, short_plans
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
@@ -178,7 +178,7 @@ def test_disc_temperatures_follow_the_exact_step_law(run: Run) -> None:
             + power[:, None] * share / capacity * tau * decay
         )
         after = np.vstack([temp[1:], trip.end.disc])
-        np.testing.assert_allclose(after, expected, rtol=1e-12, atol=0)
+        np.testing.assert_allclose(after, expected, rtol=1e-12, atol=TEMPERATURE_ATOL)
         assert np.all(after[held] <= temp[held])
         held_count += int(np.sum(held & (distance > 0)))
     assert held_count > 0
@@ -187,6 +187,7 @@ def test_disc_temperatures_follow_the_exact_step_law(run: Run) -> None:
 def test_tyre_temperatures_follow_the_mean_speed_target(run: Run) -> None:
     """T' = T_target + (T - T_target) e^(-DT/tau), T_target from the step's mean speed."""
     p = run.sim.p.tyres
+    capped = 0
     for trip in all_trips(run):
         speed, next_speed = (
             trip.true(lambda t: t.drive.speed),
@@ -198,7 +199,9 @@ def test_tyre_temperatures_follow_the_mean_speed_target(run: Run) -> None:
         temp = trip.true(lambda t: t.tyre_temp)
         after = np.vstack([temp[1:], trip.end.tyre])
         expected = target + (temp - target) * math.exp(-PHYSICS_DT / p.tau)
-        np.testing.assert_allclose(after, expected, rtol=1e-12, atol=0)
+        np.testing.assert_allclose(after, expected, rtol=1e-12, atol=TEMPERATURE_ATOL)
+        capped += int(np.sum(mean > p.warmup_speed))
+    assert capped > 0
 
 
 def test_coolant_follows_the_target_of_the_step_pedal(run: Run) -> None:
@@ -208,7 +211,7 @@ def test_coolant_follows_the_target_of_the_step_pedal(run: Run) -> None:
         target = coolant_target_temperature(trip.true(lambda t: t.accel_pedal), p)
         after = np.append(temp[1:], trip.end.coolant)
         expected = target + (temp - target) * math.exp(-PHYSICS_DT / p.tau)
-        np.testing.assert_allclose(after, expected, rtol=1e-12, atol=0)
+        np.testing.assert_allclose(after, expected, rtol=1e-12, atol=TEMPERATURE_ATOL)
 
 
 def test_pedal_demand_uses_the_start_of_step_speed(run: Run) -> None:
@@ -343,7 +346,7 @@ def test_parked_cooling_between_trips(run: Run) -> None:
                 (start.coolant_temp[slot], previous.end.coolant, taus[2]),
             ):
                 expected = ambient + (end - ambient) * math.exp(-t / tau)
-                np.testing.assert_allclose(value, expected, rtol=1e-12, atol=0)
+                np.testing.assert_allclose(value, expected, rtol=1e-12, atol=TEMPERATURE_ATOL)
                 assert np.all(np.abs(value - ambient) < np.abs(end - ambient))
 
 
@@ -384,7 +387,7 @@ def test_parked_cooling_across_midnight() -> None:
     ):
         at_midnight = a0 + (end - a0) * math.exp(-midnight / tau)
         expected = a1 + (at_midnight - a1) * math.exp(-after / tau)
-        np.testing.assert_allclose(value, expected, rtol=1e-12, atol=0)
+        np.testing.assert_allclose(value, expected, rtol=1e-12, atol=TEMPERATURE_ATOL)
     assert start.ambient.temperature == a1
 
 

@@ -1,6 +1,6 @@
 """Shared test helper: drive a few trips and compute their steering, for model invariant tests;
 the slip bound the configuration allows; the a_lat tolerance on measured signals; short day
-plans for the fleet loop."""
+plans for the fleet loop; the absolute tolerance of the temperature law checks."""
 
 import math
 from dataclasses import dataclass
@@ -24,6 +24,12 @@ from simulator.profile.road import Road
 from simulator.profile.speed_plan import DriverParameters
 from simulator.profile_config import drive_profile, trip_overrun_bound
 from simulator.sensors import SensorParameters, error_bound
+
+# K: absolute floor for the temperature law checks, rtol 1e-12 at a 100 K temperature scale. Near
+# 0 degC a relative tolerance alone asks for more than float64 gives: numpy's exp may differ from
+# math.exp in the last bit on some CPUs (SIMD kernels), an error of |T - T_target| times one ulp,
+# below 1e-13 K. Broken laws (Euler step, wrong time constant or target) give 1e-8 K and more.
+TEMPERATURE_ATOL = 1e-10
 
 
 @dataclass(frozen=True)

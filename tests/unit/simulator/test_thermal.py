@@ -41,6 +41,9 @@ from simulator.profile_config import drive_profile, duty_cycle
 
 BAR = 1e5
 ATMOSPHERIC = 1.013 * BAR  # duty_cycle.yaml
+# degC. Above 0 on purpose: the temperatures of the tests that use it stay at or above it, far
+# from 0 degC, so a relative tolerance alone covers last-bit differences of exp between CPUs
+# (TEMPERATURE_ATOL in driven.py).
 AMBIENT = 10.0
 NOMINAL = np.array([[3700.0, 3700.0, 2800.0, 2800.0]])  # J/K, van_model.yaml
 SHARES = np.array([0.35, 0.35, 0.15, 0.15])  # front_brake_share 0.70 split per wheel
