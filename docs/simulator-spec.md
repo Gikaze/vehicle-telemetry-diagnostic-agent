@@ -77,13 +77,25 @@ values; the sample takes the value at `t_k`, and the value after a trip's last s
 (ignition off, not emitted). A trip starts on the step grid at `floor(shift_start / DT)`, each later one at the
 step after the previous ignition off plus `floor(break / DT)`, so never later than the continuous day plan.
 
+**Speed planning** (`simulator/src/simulator/profile/speed_plan.py`, parameters in `drive_profile.yaml`). The
+driver plans a reference speed along the road: `v_ref(s)` is the lowest of the segment target speed, the curve
+speed inside a curve, `sqrt(v_c² + 2 · approach_decel · (s_c − s))` for each constraint ahead, and the pull-away
+ramp `sqrt(v_0² + 2 · pull_away_accel · (s − s_0))`. Constraints are curve starts (curve speed), stops (0) and
+segment boundaries towards a lower speed. The ramp restarts from the current speed when a curve ends or a segment
+begins, and from 0 when a stop is released. On an approach (an envelope is the lowest term) the command is the
+constant deceleration that meets the constraint from the current state, `−(v² − v_c²) / (2 · (s_c − s))`, so stops
+are met at their position. Otherwise it is `a_ref + speed_tracking_gain · (v_ref − v)` (gain 0.5 1/s), with
+`a_ref = pull_away_accel · min(v / v_ref, 1)` on the ramp and 0 on a constant limit. The active term is chosen one
+step ahead. The command is clipped to `[−decel_service_max, min(accel_max, engine power limit)]`; the brakes or
+the engine supply what gravity, rolling resistance, drag and engine drag do not.
+
 **Reference point:** the centre of the rear axle. The speed `v`, the road curvature `κ` and the curve speed law
 `v_c = sqrt(a_lat,curve · R)` are taken there; the kinematic single-track model then gives the road-wheel angle
 `δ = atan(L · κ)` (no tyre slip angles at low lateral acceleration).
 
 | Signal | Law | Coupled to |
 | --- | --- | --- |
-| Speed `v` | Approaches the segment target with bounded acceleration and deceleration; `v ≥ 0` | Drive profile |
+| Speed `v` | Tracks the planned reference speed (Speed planning, above) with bounded acceleration and deceleration; `v ≥ 0` | Drive profile |
 | Longitudinal accel | Derivative of `v` | Speed |
 | Brake pressure, pedal | Non-zero when deceleration exceeds what drag and engine braking provide | Longitudinal accel |
 | Steering wheel angle and rate | Angle `i_s · δ` (`i_s` steering ratio); rate = angle change over the step / `DT`, like the longitudinal acceleration | Road curvature |
@@ -192,9 +204,9 @@ Confirmation thresholds are simulator parameters, not values taken from any real
 4. **Scenario tests:** each fault model produces its expected signature, and only that one.
 5. **Expert review:** a plot of one simulated vehicle-day (speed, accelerations, temperatures, pressures) is
    published in `docs/assets/` and reviewed by a domain expert before v1.0. `make vehicle-day` runs one fleet
-   day (10 vans, seed 42), checks that every van's last ignition off is before `shift_end_latest`, that no trip
-   overruns its plan by more than `trip_overrun_bound` and that no emitted value is NaN, and plots VAN-001's day
-   to `docs/assets/m1-vehicle-day.png`: a full-day overview and two 3-minute zooms (hottest front disc, a
+   day (10 vans, seed 42), checks that every van's last ignition off is at or before `shift_end_latest`, that no
+   trip overruns its plan by more than `trip_overrun_bound` and that no emitted value is NaN, and plots VAN-001's
+   day to `docs/assets/m1-vehicle-day.png`: a full-day overview and two 3-minute zooms (hottest front disc, a
    delivery stop of that trip).
 
 ## 8. Assumptions and limits
@@ -202,7 +214,22 @@ Confirmation thresholds are simulator parameters, not values taken from any real
 - Parameter values are indicative orders of magnitude for a light commercial van, chosen from general public
   knowledge; they are listed with their rationale in `simulator/config/` and are not calibrated against any
   real vehicle.
-- The single-track model is used at low lateral acceleration only; the simulator does not reproduce limit handling.
+- **Duty cycle and terrain.** A van-day is a regional delivery round: the shift starts between 06:30 and 07:30
+  and ends between 16:00 and 18:30, with 4 to 6 trips and a lunch break; urban segments end in a delivery stop
+  with probability 0.7. Over the 10 vans of `make vehicle-day` (seed 42; true distance from the day summary in
+  `simulator/src/simulator/fleet_day.py`), a van drives 324.6 to 427.5 km and makes 20 to 37 delivery stops
+  (VAN-001: 415.9 km in 5 trips, 33 delivery stops). The terrain is temperate, low-altitude and hilly: urban
+  grades within ±2 %, rural ±3 %, descents of 7 to 10 % lasting 2 to 5 min; the grade is constant within a segment
+  and steps at segment boundaries. Altitude is not tracked: descents are not balanced by climbs, and the
+  atmospheric pressure stays at 1.013 bar. The ambient temperature is one value per day for the whole fleet (a
+  fleet stream), drawn uniformly between −5 and 30 °C as the daily mean of a temperate lowland year: no diurnal
+  cycle, the uniform draw over-weights the extremes, and one day tests one ambient.
+- The single-track model is kinematic and is used at low lateral acceleration only; the simulator does not
+  reproduce limit handling. Transient dynamics are reduced: no tyre relaxation lag, no roll, no yaw inertia or
+  damping, so the yaw rate and lateral acceleration follow the steering angle within the step. Axle loads are
+  static, so there is no pitch or load transfer under braking. `front_brake_share` (0.70) suits the load
+  transferred to the front axle under braking, but the slip of each axle is computed on its static load: under
+  braking the model overstates the front slip and understates the rear slip compared with a real van.
 - The inertial sensor cluster (`accel_long`, `accel_lat`, `yaw_rate`) sits at the reference point, the rear axle
   centre, so `accel_lat = v · yaw_rate` and `accel_long = dv/dt` hold exactly. A real cluster sits near the
   centre of gravity, a distance `x` ahead of the rear axle (about 1.5 m laden to 2.0 m empty with the model's
@@ -246,6 +273,21 @@ Confirmation thresholds are simulator parameters, not values taken from any real
   at rest therefore never steers. This is a property of the drive profile, not of the steering law, which only
   guarantees a zero steering rate in a step where the van does not move: a van pulling away inside a curve ramp
   would turn the wheel from rest, and a real driver may steer at standstill, which the profile never does.
+- A trip ends at its final stop, inserted when the remaining planned time equals the time to stop at
+  `approach_decel`. If the time runs out while the van is held at a traffic or delivery stop, or with such a stop
+  before the stopping point, that stop becomes the final stop, so a trip can end at a traffic light or a delivery.
+  Events (curves, stops) are at least `event_min_spacing` (50 m) apart. A trip's overrun past its planned duration
+  is bounded by `trip_overrun_bound` (73.3 s), checked per trip by the loop invariants and by `make vehicle-day`;
+  seed 42's largest overrun was 23.0 s.
+- Cruise speeds are flat. On a constant limit the van holds the segment target speed exactly: the tracking term
+  has nothing to correct, and there is no driver variation, traffic or speed noise. A cruise is a straight line
+  in the true speed, and the measured speeds show only sensor noise.
+- When a segment begins with a higher target speed, the pull-away ramp restarts from the current speed and its
+  feed-forward asks for `pull_away_accel` (1.2 m/s²). On a descent this is more than gravity gives, so the driver
+  presses the accelerator for five steps (0.5 s) between two braking phases (seed 42, VAN-001: at about 21 %,
+  between 3.55 and 1.37 bar). This was seen at a segment boundary; a curve exit on a descent, where the ramp also
+  restarts, has not been checked. See [#8](https://github.com/Gikaze/vehicle-telemetry-diagnostic-agent/issues/8)
+  (v2).
 - Brake disc temperature is an uncalibrated first-order estimate. While parked (ignition off), the
   discs, the tyres and the coolant cool in closed form, `T_a + (T − T_a) · e^(−t/τ)`, with the time
   constant of each law at rest: `disc_cooling_tau_standstill` (600 s), `tyre_thermal_tau` (1200 s)
@@ -254,6 +296,15 @@ Confirmation thresholds are simulator parameters, not values taken from any real
   loop applies this at every trip start, from the actual ignition off; the temperatures, gear and
   odometer carry over between trips and days, and only the first trip of a simulation starts at
   the ambient temperature.
+- Without an injected fault, the two discs of an axle stay within `disc_lr_spread_rel_max` (5 % of the larger
+  rise) plus `disc_lr_spread_abs_max` (2 K) of each other, and the front/rear ratio of the axle mean rises above
+  ambient stays in [1.69, 1.84] over 60 s windows once the rear rise exceeds 20 K (`plausibility.yaml`; invariant
+  tests on the true state in `tests/unit/simulator/test_thermal.py`). Both follow from the model: the same cooling
+  law on all four discs, a fixed brake split and per-wheel heat capacities within ±2 %. Real vans vary more
+  (different front and rear cooling, caliper drag). On emitted values the ratio bounds widen with the resolution
+  of the disc estimates (1 K) and of the ambient (0.5 K), both noise-free: to [1.59, 1.95] at the 20 K threshold
+  (`disc_ratio_min_rear_rise` rationale). No code computes this widening yet; the M3 rules, which work on emitted
+  data, will derive it from the catalogue resolutions.
 - `eps_temperature` reads the day's ambient (no EPS thermal model in v1.0); `eps_derating_active`,
   `brake_pad_wear_warning` and `brake_fluid_level_warning` are false and `sas_calibrated` true
   unless a scenario sets them.
@@ -261,14 +312,22 @@ Confirmation thresholds are simulator parameters, not values taken from any real
   real thermostat regulates faster once open.
 - The engine runs for the whole trip and idles at every stop, delivery stops included (ignition on).
   The clutch is modelled only as the idle floor of the engine speed when pulling away in first
-  gear; there are no shift times or torque interruptions.
+  gear; there are no shift times or torque interruptions. At rest the gear is first and the engine
+  idles. At a delivery stop (0 bar, held by the parking brake, which is not modelled and has no
+  signal) the clutch is open, so the van does not creep; no creep or idle-load torque is modelled.
 - The four tyres of a van share one temperature (no load, brake heat or sun effect); their pressures
   differ only by the per-wheel cold pressure. Cold pressures are set at 20 °C whatever the day's
   ambient, so a nominal tyre reads 3.39 bar cold on a −5 °C day. Pressure follows the ideal gas on
   absolute pressure (gauge plus the day's atmospheric pressure).
-- The reference speed is a simple estimate from wheel speeds. The brake ECU uses one road-wheel angle for both
-  front wheels, so its front axle correction leaves +1.01 % on the inner and −0.94 % on the outer front wheel in
-  the 10 m curve at its curve speed; slip and the tyre radius bias also scale the yaw term it adds back.
+- The reference speed is a simple estimate from wheel speeds, with no filter and no lag. Every wheel reading is
+  taken at the nominal tyre radius, so the reference speed, pedal pressed or released (front mean included),
+  carries the vehicle's tyre radius bias: up to ±1 % (`tyre_radius_spread`), about ±0.5 km/h at 50 km/h. While
+  braking it also carries the wheel slip, which pulls it down. The smallest effect is the noise: while the pedal
+  is pressed it is the fastest of the four corrected wheel speeds, and the maximum of four noisy readings is
+  biased upwards by about 1.03 σ = +0.05 km/h on a straight road (σ = 0.05 km/h per wheel). The brake ECU uses
+  one road-wheel angle for both front wheels, so its front axle correction leaves +1.01 % on the inner and
+  −0.94 % on the outer front wheel in the 10 m curve at its curve speed; slip and the tyre radius bias also scale
+  the yaw term it adds back.
 - ABS, TCS and ESC never intervene in v1.0: in the worst case of the drive profiles, with the measurement errors
   at their bounds, the lowest margins are 2.13 (ABS), 1.86 (TCS) and 3.93 (ESC), checked from the
   configuration by a unit test (`van_model.yaml`, `ecu_slip_speed_min` and `esc_yaw_error_threshold`).
