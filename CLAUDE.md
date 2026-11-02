@@ -94,6 +94,9 @@ measured values; never invent figures.
 ## Commit messages
 
 Format: `type(scope): imperative summary` (max 72 chars), blank line, body explaining *why*, then `Refs: FR-xx`.
+List in `Refs:` only the requirements whose acceptance criterion the commit's tests exercise, or whose status the
+commit changes. A commit that does neither (a refactor, tooling, a document that changes no status) has no `Refs`
+line.
 
 | Type | Use | Scopes |
 | --- | --- | --- |
