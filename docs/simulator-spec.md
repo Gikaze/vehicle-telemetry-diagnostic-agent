@@ -198,7 +198,9 @@ Confirmation thresholds are simulator parameters, not values taken from any real
    - normal operation: coolant temperature rate of change stays below a defined bound;
    - acceleration stays within the bounds of the vehicle model;
    - lateral acceleration ≈ speed × yaw rate, within tolerance;
-   - without an injected fault, the four disc temperatures stay within a defined spread.
+   - without an injected fault, the two discs of an axle stay within a left/right spread bound, and the
+     front/rear ratio of the axle mean rises above ambient, averaged over a window once the rear rise exceeds a
+     threshold, stays within its bounds (`plausibility.yaml`; section 8).
 3. **Normal-stream test:** 100 vehicles × 24 simulated hours produce **zero** anomalies (false-positive check,
    shared with FR-06).
 4. **Scenario tests:** each fault model produces its expected signature, and only that one.
