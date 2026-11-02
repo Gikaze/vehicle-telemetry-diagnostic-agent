@@ -25,9 +25,15 @@ parking brake, gearbox, lighting, body, battery, GNSS.
 ```
 
 - **Drive profile:** a trip is a sequence of segments (urban, rural, downhill, stop), each with a target speed and
-  duration drawn from a seeded random generator. Same seed, same trip (FR-02).
-- **Vehicle model:** true physical states updated every 0.1 s.
-- **Sensor layer:** converts true states into measured signals (noise, resolution, estimation).
+  duration drawn from random streams derived from one root seed: each vehicle has its own streams, keyed
+  by its ID, so the same seed gives the same trip and adding a vehicle does not change the other
+  vehicles' trips (FR-02).
+- **Vehicle model:** true physical states updated every 0.1 s, carried by the fleet loop across trips and days
+  (section 4, Sampling).
+- **Sensor layer:** converts true states into measured signals in catalogue units: Gaussian noise clipped at
+  `noise_clip_sigma` for the noisy signals (`simulator/config/sensors.yaml`), then quantisation to the catalogue
+  resolution and saturation to its range. Noise comes from each vehicle's own stream per day and trip, drawn in
+  blocks.
 - **Fault overlay:** modifies states or signals when a scenario is active.
 - **Aggregator:** summarises each 10 s window and emits immediate event messages.
 - **Transport:** adds sequence numbers and realistic delivery defects, then publishes (Kinesis locally,
@@ -61,19 +67,49 @@ chassis codes are manufacturer-specific in practice, so the simulator uses **fic
 Updated every `DT = 0.1 s`. Parameters (wheelbase, track, steering ratio, thermal constants) live in a per-model
 configuration, with small per-vehicle variation so no two vans are identical.
 
+**Sampling.** The fleet loop (`simulator/src/simulator/fleet_state.py`) emits one sample per step `k` of each
+vehicle with a trip in progress, describing `t_k`, the start of the step. Instantaneous states are their values
+at `t_k`: speed, wheel speeds, yaw rate, lateral acceleration, steering angle, temperatures, pressures,
+odometer. Quantities over the step are held over `[t_k, t_k + DT)`: the longitudinal acceleration (the actual
+`(v_(k+1) − v_k) / DT`), steering rate and torques, master cylinder pressure and brake switch, accelerator pedal,
+gear and engine speed (the gear selected from `v_k` with step `k`'s rear slip). The thermal laws give end-of-step
+values; the sample takes the value at `t_k`, and the value after a trip's last step goes into the parked state
+(ignition off, not emitted). A trip starts on the step grid at `floor(shift_start / DT)`, each later one at the
+step after the previous ignition off plus `floor(break / DT)`, so never later than the continuous day plan.
+
+**Speed planning** (`simulator/src/simulator/profile/speed_plan.py`, parameters in `drive_profile.yaml`). The
+driver plans a reference speed along the road: `v_ref(s)` is the lowest of the segment target speed, the curve
+speed inside a curve, `sqrt(v_c² + 2 · approach_decel · (s_c − s))` for each constraint ahead, and the pull-away
+ramp `sqrt(v_0² + 2 · pull_away_accel · (s − s_0))`. Constraints are curve starts (curve speed), stops (0) and
+segment boundaries towards a lower speed. The ramp restarts from the current speed when a curve ends or a segment
+begins, and from 0 when a stop is released. On an approach (an envelope is the lowest term) the command is the
+constant deceleration that meets the constraint from the current state, `−(v² − v_c²) / (2 · (s_c − s))`, so stops
+are met at their position. Otherwise it is `a_ref + speed_tracking_gain · (v_ref − v)` (gain 0.5 1/s), with
+`a_ref = pull_away_accel · min(v / v_ref, 1)` on the ramp and 0 on a constant limit. The active term is chosen one
+step ahead. The command is clipped to `[−decel_service_max, min(accel_max, engine power limit)]`; the brakes or
+the engine supply what gravity, rolling resistance, drag and engine drag do not.
+
+**Reference point:** the centre of the rear axle. The speed `v`, the road curvature `κ` and the curve speed law
+`v_c = sqrt(a_lat,curve · R)` are taken there; the kinematic single-track model then gives the road-wheel angle
+`δ = atan(L · κ)` (no tyre slip angles at low lateral acceleration).
+
 | Signal | Law | Coupled to |
 | --- | --- | --- |
-| Speed `v` | Approaches the segment target with bounded acceleration and deceleration; `v ≥ 0` | Drive profile |
+| Speed `v` | Tracks the planned reference speed (Speed planning, above) with bounded acceleration and deceleration; `v ≥ 0` | Drive profile |
 | Longitudinal accel | Derivative of `v` | Speed |
 | Brake pressure, pedal | Non-zero when deceleration exceeds what drag and engine braking provide | Longitudinal accel |
-| Yaw rate | Single-track model: `v · δ / (i_s · L)` at low lateral acceleration (`δ` road-wheel angle from steering wheel angle, `i_s` steering ratio, `L` wheelbase) | Speed, steering angle |
-| Lateral accel | `v · yaw_rate` | Speed, yaw rate |
-| Wheel speeds | `v` plus a cornering offset proportional to `yaw_rate · track / 2` (outer wheels faster), plus slip under hard braking, plus sensor noise | Speed, yaw rate, brake pressure |
-| Reference speed | **Estimated from wheel speeds** (not copied from true `v`), as an ESC does | Wheel speeds |
-| Disc temperature (×4) | First-order: heats in proportion to braking energy shared per axle, cools exponentially, faster with speed | Brake pressure, speed, ambient |
-| Tyre temperature and pressure (×4) | Tyre temperature rises with driving; pressure follows temperature (ideal-gas behaviour) around the model's nominal value | Speed, ambient |
-| Coolant temperature | First-order warm-up towards the regulated operating band (thermostat) | Engine running time, load |
-| Engine speed | From vehicle speed and a simple gear schedule; idle when stopped | Speed |
+| Steering wheel angle and rate | Angle `i_s · δ` (`i_s` steering ratio); rate = angle change over the step / `DT`, like the longitudinal acceleration | Road curvature |
+| Yaw rate | Single-track model: `v · tan(δ) / L = v · κ` at low lateral acceleration (`δ` road-wheel angle, `L` wheelbase) | Speed, steering angle |
+| Lateral accel | `v · yaw_rate`, sensor at the reference point (section 8) | Speed, yaw rate |
+| Wheel speeds | Kinematic single track: rear wheels `v ∓ yaw_rate · track / 2`, front wheels `sqrt((v ∓ yaw_rate · track / 2)² + (yaw_rate · L)²)` (outer wheels faster, front axle on a wider radius); times `1 + slip`, with a linear slip per axle `F_x / (C · F_z)` (static axle loads from the payload; braking split by `front_brake_share`, traction and engine drag on the rear axle); read by the ECU with the nominal tyre radius (a van's tyre radius bias shows in every reading); plus sensor noise | Speed, yaw rate, brake and engine forces, payload |
+| Odometer | Distance read from the two rear wheels (their mean speed is `v` in a curve), with the rear slip and the tyre radius bias; starts from a per-vehicle reading | Speed, slip |
+| Reference speed | **Estimated from measured wheel speeds** (not copied from true `v`), as an ESC does: each wheel brought to the rear axle centre (front wheels × `cos δ`, `δ` from the measured steering angle, then `± yaw_rate · track / 2` from the measured yaw rate); the fastest corrected wheel while the brake pedal is pressed, the front (non-driven) mean otherwise | Wheel speeds, yaw rate, steering angle, brake switch |
+| ABS, TCS, ESC flags | Computed by the brake ECU from the measured signals: ABS (pedal pressed) when a wheel is below the reference speed, TCS (pedal released) when a rear wheel is above it, both by more than `ecu_slip_speed_min` **and** a slip ratio over `max(v_ref, ecu_reference_speed_min)` above its threshold; ESC when `|yaw_rate − v_ref · tan δ / L|` exceeds `esc_yaw_error_threshold` above `ecu_reference_speed_min` | Reference speed, wheel speeds, yaw rate, steering angle |
+| Disc temperature (×4) | First-order: heats in proportion to braking energy shared per axle (none on a step at rest), cools exponentially towards ambient with `1/τ` affine in the step's mean speed, the same `τ` on the four discs; exact update over each step with power and `τ` held | Brake force, speed, ambient |
+| Tyre temperature and pressure (×4) | Temperature: first-order towards `T_a + rise · min(1, v / v_ref)` (`v` the step's mean speed), exact update over each step, one temperature for the four tyres. Pressure: ideal gas at constant volume on absolute pressure, from each wheel's cold pressure set at 20 °C | Speed, ambient |
+| Coolant temperature | First-order towards the regulated temperature `thermostat + load_rise · pedal / 100` (90 to 94 °C), one time constant for warm-up and tracking in the band, exact update over each step; the engine runs for the whole trip | Engine running time, load (pedal) |
+| Engine speed | Rear wheel rotation (speed, rear slip, the vehicle's tyre radius) times the overall ratio of the gear; the schedule selects first gear at rest and shifts at most once per step, up above `upshift_speed`, down below `downshift_speed`; idle at rest, never below idle (clutch slipping when pulling away) | Speed, slip, gear |
+| Accelerator pedal | Traction power over the rated power, `F_trac · max(v, v_min) / P_max`, 0 with the engine dragging | Traction force, speed |
 | Steering torques | Driver torque and assist torque grow with steering rate and lateral acceleration | Steering, lateral accel |
 
 ## 5. Telemetry format and transmission (FR-01, FR-17)
@@ -162,21 +198,141 @@ Confirmation thresholds are simulator parameters, not values taken from any real
    - normal operation: coolant temperature rate of change stays below a defined bound;
    - acceleration stays within the bounds of the vehicle model;
    - lateral acceleration ≈ speed × yaw rate, within tolerance;
-   - without an injected fault, the four disc temperatures stay within a defined spread.
+   - without an injected fault, the two discs of an axle stay within a left/right spread bound, and the
+     front/rear ratio of the axle mean rises above ambient, averaged over a window once the rear rise exceeds a
+     threshold, stays within its bounds (`plausibility.yaml`; section 8).
 3. **Normal-stream test:** 100 vehicles × 24 simulated hours produce **zero** anomalies (false-positive check,
    shared with FR-06).
 4. **Scenario tests:** each fault model produces its expected signature, and only that one.
 5. **Expert review:** a plot of one simulated vehicle-day (speed, accelerations, temperatures, pressures) is
-   published in `docs/assets/` and reviewed by a domain expert before v1.0.
+   published in `docs/assets/` and reviewed by a domain expert before v1.0. `make vehicle-day` runs one fleet
+   day (10 vans, seed 42), checks that every van's last ignition off is at or before `shift_end_latest`, that no
+   trip overruns its plan by more than `trip_overrun_bound` and that no emitted value is NaN, and plots VAN-001's
+   day to `docs/assets/m1-vehicle-day.png`: a full-day overview and two 3-minute zooms (hottest front disc, a
+   delivery stop of that trip).
 
 ## 8. Assumptions and limits
 
 - Parameter values are indicative orders of magnitude for a light commercial van, chosen from general public
   knowledge; they are listed with their rationale in `simulator/config/` and are not calibrated against any
   real vehicle.
-- The single-track model is used at low lateral acceleration only; the simulator does not reproduce limit handling.
-- Brake disc temperature is an uncalibrated first-order estimate.
-- The reference speed is a simple estimate from wheel speeds.
+- **Duty cycle and terrain.** A van-day is a regional delivery round: the shift starts between 06:30 and 07:30
+  and ends between 16:00 and 18:30, with 4 to 6 trips and a lunch break; urban segments end in a delivery stop
+  with probability 0.7. Over the 10 vans of `make vehicle-day` (seed 42; true distance from the day summary in
+  `simulator/src/simulator/fleet_day.py`), a van drives 324.6 to 427.5 km and makes 20 to 37 delivery stops
+  (VAN-001: 415.9 km in 5 trips, 33 delivery stops). The terrain is temperate, low-altitude and hilly: urban
+  grades within ±2 %, rural ±3 %, descents of 7 to 10 % lasting 2 to 5 min; the grade is constant within a segment
+  and steps at segment boundaries. Altitude is not tracked: descents are not balanced by climbs, and the
+  atmospheric pressure stays at 1.013 bar. The ambient temperature is one value per day for the whole fleet (a
+  fleet stream), drawn uniformly between −5 and 30 °C as the daily mean of a temperate lowland year: no diurnal
+  cycle, the uniform draw over-weights the extremes, and one day tests one ambient.
+- The single-track model is kinematic and is used at low lateral acceleration only; the simulator does not
+  reproduce limit handling. Transient dynamics are reduced: no tyre relaxation lag, no roll, no yaw inertia or
+  damping, so the yaw rate and lateral acceleration follow the steering angle within the step. Axle loads are
+  static, so there is no pitch or load transfer under braking. `front_brake_share` (0.70) suits the load
+  transferred to the front axle under braking, but the slip of each axle is computed on its static load: under
+  braking the model overstates the front slip and understates the rear slip compared with a real van.
+- The inertial sensor cluster (`accel_long`, `accel_lat`, `yaw_rate`) sits at the reference point, the rear axle
+  centre, so `accel_lat = v · yaw_rate` and `accel_long = dv/dt` hold exactly. A real cluster sits near the
+  centre of gravity, a distance `x` ahead of the rear axle (about 1.5 m laden to 2.0 m empty with the model's
+  axle loads), and would read `a_y = v · ψ̇ + x · ψ̈` and `a_x = dv/dt − x · ψ̇²`. The worst case of the drive
+  profile is the tightest curve (`urban_turn_radius_min` = 10 m at its curve speed 4.47 m/s, `ψ̇` = 0.447 rad/s)
+  with the shortest curvature ramp: `curve_transition_time_min` = 2 s (the cap `R · angle / v` is never shorter,
+  at least 2.47 s for downhill bends), so `ψ̈ = v / (R · t)` = 0.224 rad/s². The extra terms then reach 0.34 to
+  0.44 m/s² on `a_y` on the ramps and −0.30 to −0.40 m/s² on `a_x` in the arc.
+- Sensor noise is Gaussian, white and unbiased, clipped at 3 σ, so every measurement error of a true value inside the
+  catalogue range is at most 3 σ plus half the resolution. There is no offset, drift or filtering (the coolant σ
+  stands for the ECU's filtered reading). A wheel speed sensor reads exactly 0 at standstill. Readings saturate at
+  the range bounds: a released brake (0 bar) reads 0 to 0.6 bar and a released accelerator 0 to 0.6 %, exactly 0
+  in about 60 % of the samples; `brake_pedal_pressed` comes from the brake light switch on the true pressure, not
+  from this reading.
+- `accel_long` reads the derivative of the speed, `dv/dt`. A real accelerometer on a grade also reads the gravity
+  component along the road, `g · sin(atan(grade))` (about 1 m/s² on a 10 % grade); the model leaves it out.
+- Brake pedal at stops: whenever the van is at rest (speed 0 at both ends of a step) outside a delivery stop,
+  the driver holds `max(standstill_brake_pressure, brake_pressure_gain · F_hold / brake_reference_mass)`, with
+  `F_hold = m · g · |sin(atan(grade))|`. `standstill_brake_pressure` (10 bar) is checked at load to hold the laden
+  van on `urban_grade_max`, the steepest grade of the urban segments where traffic stops lie. At rest also covers
+  the unmarked step when the approach law brings the van to 0 one step before a stop captures it, which can be
+  the last step at a final stop on a descent of up to 10 % (11.5 bar for a laden van): holding the pedal there
+  keeps `brake_pedal_pressed` from dropping for 0.1 s, which would count as a false press. At a delivery stop
+  the driver leaves the cab with the engine running: the pedal is released (0 bar, `brake_pedal_pressed` false)
+  and the van is held by the parking brake, which is not modelled and has no signal. A delivery stop sits at the
+  end of an urban segment, so the van may stand on the next segment's grade (rural up to 3 %, descent up to
+  10 %). On every step at rest, delivery stops included, the model records no traction and a friction brake
+  force of `F_hold` (supplied by the parking brake at a delivery, with the pedal released); the pressure still
+  follows the rule above, not this force.
+- When the van comes to rest at a stop, its speed is set to 0 from below `stop_speed_threshold` without a force:
+  at most 0.1 m/s, i.e. at most ½ · 3300 kg · (0.1 m/s)² = 16.5 J per stop that no brake absorbs (below 0.01 K on
+  a disc).
+- On a step where a stop cancels a pull-away commanded from rest, the position still advances with the commanded
+  speed: the van and the odometer can advance up to about 6 mm on a step at rest (seen on 9 of 320 five-minute
+  trips, with no missed stop). The brakes do no work on that step (no disc heating). The odometer also gets up to
+  0.014 mm of rear slip from `F_hold` there, which is not physical at rest (static friction, like the disc
+  power). Keeping the van in place shifts later positions and speeds and can leave it more than 1 cm short of a
+  final stop; see issue #7.
+- No pull-away happens inside a curve: trip starts and intermediate stops are at least `event_min_spacing`
+  (50 m) away from any curve; the final stop can sit at a curve's end, but ignition goes off there. A van
+  at rest therefore never steers. This is a property of the drive profile, not of the steering law, which only
+  guarantees a zero steering rate in a step where the van does not move: a van pulling away inside a curve ramp
+  would turn the wheel from rest, and a real driver may steer at standstill, which the profile never does.
+- A trip ends at its final stop, inserted when the remaining planned time equals the time to stop at
+  `approach_decel`. If the time runs out while the van is held at a traffic or delivery stop, or with such a stop
+  before the stopping point, that stop becomes the final stop, so a trip can end at a traffic light or a delivery.
+  Events (curves, stops) are at least `event_min_spacing` (50 m) apart. A trip's overrun past its planned duration
+  is bounded by `trip_overrun_bound` (73.3 s), checked per trip by the loop invariants and by `make vehicle-day`;
+  seed 42's largest overrun was 23.0 s.
+- Cruise speeds are flat. On a constant limit the van holds the segment target speed exactly: the tracking term
+  has nothing to correct, and there is no driver variation, traffic or speed noise. A cruise is a straight line
+  in the true speed, and the measured speeds show only sensor noise.
+- When a segment begins with a higher target speed, the pull-away ramp restarts from the current speed and its
+  feed-forward asks for `pull_away_accel` (1.2 m/s²). On a descent this is more than gravity gives, so the driver
+  presses the accelerator for five steps (0.5 s) between two braking phases (seed 42, VAN-001: at about 21 %,
+  between 3.55 and 1.37 bar). This was seen at a segment boundary; a curve exit on a descent, where the ramp also
+  restarts, has not been checked. See [#8](https://github.com/Gikaze/vehicle-telemetry-diagnostic-agent/issues/8)
+  (v2).
+- Brake disc temperature is an uncalibrated first-order estimate. While parked (ignition off), the
+  discs, the tyres and the coolant cool in closed form, `T_a + (T − T_a) · e^(−t/τ)`, with the time
+  constant of each law at rest: `disc_cooling_tau_standstill` (600 s), `tyre_thermal_tau` (1200 s)
+  and `coolant_cooldown_tau` (3600 s, engine off). The ambient switches to the next day's value at
+  midnight, so a period that crosses midnight cools towards each day's ambient in turn. The fleet
+  loop applies this at every trip start, from the actual ignition off; the temperatures, gear and
+  odometer carry over between trips and days, and only the first trip of a simulation starts at
+  the ambient temperature.
+- Without an injected fault, the two discs of an axle stay within `disc_lr_spread_rel_max` (5 % of the larger
+  rise) plus `disc_lr_spread_abs_max` (2 K) of each other, and the front/rear ratio of the axle mean rises above
+  ambient stays in [1.69, 1.84] over 60 s windows once the rear rise exceeds 20 K (`plausibility.yaml`; invariant
+  tests on the true state in `tests/unit/simulator/test_thermal.py`). Both follow from the model: the same cooling
+  law on all four discs, a fixed brake split and per-wheel heat capacities within ±2 %. Real vans vary more
+  (different front and rear cooling, caliper drag). On emitted values the ratio bounds widen with the resolution
+  of the disc estimates (1 K) and of the ambient (0.5 K), both noise-free: to [1.59, 1.95] at the 20 K threshold
+  (`disc_ratio_min_rear_rise` rationale). No code computes this widening yet; the M3 rules, which work on emitted
+  data, will derive it from the catalogue resolutions.
+- `eps_temperature` reads the day's ambient (no EPS thermal model in v1.0); `eps_derating_active`,
+  `brake_pad_wear_warning` and `brake_fluid_level_warning` are false and `sas_calibrated` true
+  unless a scenario sets them.
+- The coolant uses one time constant for the warm-up and for tracking within the regulated band; a
+  real thermostat regulates faster once open.
+- The engine runs for the whole trip and idles at every stop, delivery stops included (ignition on).
+  The clutch is modelled only as the idle floor of the engine speed when pulling away in first
+  gear; there are no shift times or torque interruptions. At rest the gear is first and the engine
+  idles. At a delivery stop (0 bar, held by the parking brake, which is not modelled and has no
+  signal) the clutch is open, so the van does not creep; no creep or idle-load torque is modelled.
+- The four tyres of a van share one temperature (no load, brake heat or sun effect); their pressures
+  differ only by the per-wheel cold pressure. Cold pressures are set at 20 °C whatever the day's
+  ambient, so a nominal tyre reads 3.39 bar cold on a −5 °C day. Pressure follows the ideal gas on
+  absolute pressure (gauge plus the day's atmospheric pressure).
+- The reference speed is a simple estimate from wheel speeds, with no filter and no lag. Every wheel reading is
+  taken at the nominal tyre radius, so the reference speed, pedal pressed or released (front mean included),
+  carries the vehicle's tyre radius bias: up to ±1 % (`tyre_radius_spread`), about ±0.5 km/h at 50 km/h. While
+  braking it also carries the wheel slip, which pulls it down. The smallest effect is the noise: while the pedal
+  is pressed it is the fastest of the four corrected wheel speeds, and the maximum of four noisy readings is
+  biased upwards by about 1.03 σ = +0.05 km/h on a straight road (σ = 0.05 km/h per wheel). The brake ECU uses
+  one road-wheel angle for both front wheels, so its front axle correction leaves +1.01 % on the inner and
+  −0.94 % on the outer front wheel in the 10 m curve at its curve speed; slip and the tyre radius bias also scale
+  the yaw term it adds back.
+- ABS, TCS and ESC never intervene in v1.0: in the worst case of the drive profiles, with the measurement errors
+  at their bounds, the lowest margins are 2.13 (ABS), 1.86 (TCS) and 3.93 (ESC), checked from the
+  configuration by a unit test (`van_model.yaml`, `ecu_slip_speed_min` and `esc_yaw_error_threshold`).
 - Fault codes carry a subset of the UDS status bits with a simple cycle-based debounce; UDS services, freeze
   frames and DTC ageing are not simulated.
 - Telemetry uses fixed 10 s aggregation windows plus event messages.

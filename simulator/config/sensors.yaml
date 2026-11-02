@@ -1,0 +1,91 @@
+# Sensor layer: measurement noise per signal. Resolution and quantisation come from catalogue.yaml.
+#
+# Noise is Gaussian with standard deviation sigma, clipped at +/- noise_clip_sigma * sigma (a sample
+# beyond the bound is set to the bound, not redrawn, so every step consumes the same number of
+# draws). The noisy value is then quantised and saturated to the catalogue range, whose bounds lie
+# on the grid, so for a true value inside the range every measurement error is bounded:
+# |measured - true| <= noise_clip_sigma * sigma + resolution / 2 (sensors.py, error_bound).
+# Sigmas are in the catalogue unit of their signals (K for a temperature in degC).
+# Invariant tests use that bound as their tolerance, so they never fail on a statistical outlier.
+# Every numeric catalogue signal is listed here with its sigma, or is noise-free in the code with a
+# stated reason (estimates computed by an ECU, fixed or integrated values).
+# Values are plausible orders of magnitude, not datasheet values of any real sensor.
+
+noise:
+  noise_clip_sigma:
+    value: 3
+    unit: "-"
+    rationale: >-
+      Clipping of the Gaussian noise at 3 sigma, which bounds every measurement error and keeps
+      test tolerances deterministic. About 0.27 % of samples lie beyond 3 sigma and sit exactly at
+      +/- 3 sigma after clipping, so about 24 % of the 10 s windows of a signal (100 samples:
+      1 - 0.9973^100 = 0.237) contain a sample at that bound.
+  noise_block_duration:
+    value: 60
+    unit: s
+    rationale: >-
+      Duration of driving whose noise is drawn at once from a vehicle's SENSOR_NOISE stream of
+      the trip (600 steps of 22 standard normal draws), so the fleet loop draws per vehicle in
+      blocks, not per step. Performance only: a block continues the stream where the previous
+      one ended, so the block size changes no measured value (tested). Must be a whole number of
+      physics steps.
+
+noise_sigma:
+  wheel_speed:
+    value: 0.05
+    unit: km/h
+    rationale: >-
+      Active wheel speed sensor jitter while rolling; applied to the four wheels. A wheel speed
+      sensor reads exactly 0 at standstill (no pulses), so no noise is added when the true speed
+      is 0.
+  accel_long:
+    value: 0.02
+    unit: m/s2
+    rationale: MEMS accelerometer noise of an ESC sensor cluster, order of a few hundredths of m/s2.
+  accel_lat:
+    value: 0.02
+    unit: m/s2
+    rationale: Same sensor cluster as accel_long.
+  yaw_rate:
+    value: 0.1
+    unit: deg/s
+    rationale: MEMS gyroscope noise of an ESC sensor cluster; also present at standstill.
+  steering_wheel_angle:
+    value: 0.1
+    unit: deg
+    rationale: Steering angle sensor noise, of the order of its resolution.
+  steering_wheel_rate:
+    value: 1
+    unit: deg/s
+    rationale: Rate reported by the steering angle sensor; noisier than the angle (differentiated).
+  driver_torque:
+    value: 0.05
+    unit: Nm
+    rationale: Torsion bar torque sensor noise of a column-type EPS.
+  eps_assist_torque:
+    value: 0.2
+    unit: Nm
+    rationale: >-
+      Assist torque reported by the EPS (motor current estimate), coarser than the torque
+      sensor.
+  master_cyl_pressure:
+    value: 0.2
+    unit: bar
+    rationale: Brake pressure sensor noise, below the brake switch pressure.
+  tyre_pressure:
+    value: 0.01
+    unit: bar
+    rationale: >-
+      TPMS pressure sensor noise, of the order of its resolution; applied to the four tyres.
+  tyre_temp:
+    value: 0.5
+    unit: K
+    rationale: TPMS temperature sensor noise; applied to the four tyres.
+  coolant_temp:
+    value: 0.3
+    unit: K
+    rationale: NTC coolant sensor noise after the ECU's filtering.
+  accel_pedal_position:
+    value: 0.2
+    unit: "%"
+    rationale: Pedal position sensor noise.

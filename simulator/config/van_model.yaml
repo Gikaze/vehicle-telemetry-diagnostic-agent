@@ -1,0 +1,418 @@
+# Vehicle model of the fictional Nordwind LV-1 light commercial van.
+#
+# Every parameter is {value, unit, rationale}; anything else is rejected, except the structural
+# fields `model` and `drive_axle`. The code declares the exact set of parameters it uses, so no
+# constant of the vehicle model or the brake ECU logic is hard-coded elsewhere.
+# Values are indicative orders of magnitude for a light commercial van, chosen from general public
+# knowledge. They are not calibrated against any real vehicle (docs/simulator-spec.md, section 8).
+# Physical constants (gravity, 0 degC in kelvin) are in simulator/src/simulator/constants.py;
+# ambient conditions (air density, atmospheric pressure, temperature) are in duty_cycle.yaml.
+
+model:
+  id: nordwind-lv1
+  name: Nordwind LV-1
+drive_axle: rear
+
+mass:
+  mass_empty:
+    value: 2300
+    unit: kg
+    rationale: Unladen mass of a van in the 3.5 t gross vehicle weight class.
+  payload_max:
+    value: 1000
+    unit: kg
+    rationale: >-
+      Upper bound of the per-vehicle payload draw (uniform from 0); keeps the laden mass below
+      3.5 t gross vehicle weight.
+  unladen_rear_axle_share:
+    value: 0.45
+    unit: "-"
+    rationale: >-
+      Share of the unladen mass on the rear axle: a front-engined van is front-heavy when empty
+      (assumed order of magnitude, not sourced). Static axle loads only, no load transfer (spec
+      section 1). Rear axle load = unladen_rear_axle_share * mass_empty
+      + payload_rear_axle_share * payload; it sets the wheel loads of the slip law
+      (tyre_slip_stiffness).
+  payload_rear_axle_share:
+    value: 0.88
+    unit: "-"
+    rationale: >-
+      Share of the payload carried by the rear axle: in a delivery van the load centroid sits close
+      to the rear axle (author's value, chassis engineering background; an assumption, not
+      sourced). Rear axle share 0.45 empty, (0.45 * 2300 + 0.88 * 1000) / 3300 = 0.58 at
+      payload_max. The ECU margins (ecu_slip_speed_min) are checked over 0.75 to 1.0.
+
+geometry:
+  wheelbase:
+    value: 3.6
+    unit: m
+    rationale: Mid-length van; used by the single-track yaw rate model.
+  track_width:
+    value: 1.7
+    unit: m
+    rationale: Typical van track; sets the wheel speed difference between inner and outer wheels.
+  tyre_rolling_radius:
+    value: 0.35
+    unit: m
+    rationale: Tyre of about 0.70 m diameter, common on light commercial vehicles.
+
+steering:
+  steering_ratio:
+    value: 17
+    unit: "-"
+    rationale: Steering-wheel angle over road-wheel angle; usual range 15 to 20.
+  steering_wheel_lock:
+    value: 540
+    unit: deg
+    rationale: >-
+      Mechanical limit of the steering wheel from straight ahead: 1.5 turns each way, 3 turns lock
+      to lock. With the steering ratio this gives a road-wheel angle of about 32 deg. A mechanical
+      limit, distinct from the sensor measurement range in catalogue.yaml.
+  steering_wheel_rate_max:
+    value: 360
+    unit: deg/s
+    rationale: >-
+      Upper bound of steering-wheel rate in normal driving (one turn per second); limits how fast
+      the drive profile changes the steering angle.
+  driver_torque_gain_rate:
+    value: 0.004
+    unit: Nm/(deg/s)
+    rationale: >-
+      Driver torque per steering-wheel rate (damping felt while turning): about 1.4 Nm at the
+      maximum rate. Driver torque = gain_rate * rate + gain_lat * accel_lat
+      + gain_park * angle * exp(-v / eps_assist_fade_speed).
+  driver_torque_gain_lat:
+    value: 0.8
+    unit: Nm/(m/s2)
+    rationale: >-
+      Driver torque per lateral acceleration (self-aligning torque felt through the wheel): about
+      2.4 Nm at the profile's lateral acceleration limit.
+  driver_torque_gain_park:
+    value: 0.01
+    unit: Nm/deg
+    rationale: >-
+      Driver torque per steering-wheel angle at standstill (tyre scrub when steering without
+      rolling), fading with speed through exp(-v / eps_assist_fade_speed): about 5 Nm at 500 deg,
+      hence about 30 Nm of assist at standstill. First steering item to cut if M1 runs over.
+  eps_assist_ratio_standstill:
+    value: 6
+    unit: "-"
+    rationale: >-
+      Assist torque over driver torque at standstill. Assist = ratio(v) * driver torque with
+      ratio(v) = high + (standstill - high) * exp(-v / eps_assist_fade_speed): column-type EPS
+      assists most when parking.
+  eps_assist_ratio_high_speed:
+    value: 2
+    unit: "-"
+    rationale: Assist ratio approached at high speed, where less assist keeps the steering stable.
+  eps_assist_fade_speed:
+    value: 10
+    unit: m/s
+    rationale: >-
+      Speed scale of the assist ratio fade and of the standstill steering torque; assist is mostly
+      faded above about 50 km/h.
+
+longitudinal:
+  accel_max:
+    value: 2.0
+    unit: m/s2
+    rationale: Upper bound of drive-profile acceleration for a laden van with a small diesel.
+  decel_service_max:
+    value: 4.0
+    unit: m/s2
+    rationale: Upper bound of normal service braking; stays well below ABS intervention.
+  speed_tracking_gain:
+    value: 0.5
+    unit: 1/s
+    rationale: >-
+      Proportional gain of the driver tracking the planned speed outside approaches:
+      a = a_ref + gain * (v_ref - v) (drive_profile.yaml, driver section), then limited to
+      [-decel_service_max, accel_max] and by engine power; closes a speed error within a few
+      seconds.
+  drag_area:
+    value: 1.3
+    unit: m2
+    rationale: Drag coefficient times frontal area (about 0.35 x 3.7 m2) of a van body.
+  rolling_resistance:
+    value: 0.010
+    unit: "-"
+    rationale: Rolling resistance coefficient of a road tyre on asphalt.
+  engine_braking_decel:
+    value: 0.4
+    unit: m/s2
+    rationale: Deceleration from engine drag with the accelerator released, in gear.
+
+lateral:
+  accel_lat_max:
+    value: 3.0
+    unit: m/s2
+    rationale: >-
+      Upper bound used by the drive profile; keeps the single-track model in its low lateral
+      acceleration domain (spec section 8).
+
+powertrain:
+  engine_power_max:
+    value: 100000
+    unit: W
+    rationale: >-
+      Rated power of a small van diesel. Accelerator pedal = 100 * clip(F * max(v,
+      pedal_mapping_min_speed) / engine_power_max, 0, 1), with F the tractive force.
+  pedal_mapping_min_speed:
+    value: 3
+    unit: m/s
+    rationale: >-
+      Speed floor of the pedal mapping, so that pulling away from standstill gives a non-zero pedal
+      position.
+  gear_overall_ratios:
+    value: [17.55, 10.14, 6.63, 4.68, 3.705, 3.042]
+    unit: "-"
+    rationale: >-
+      Gearbox ratios 4.5, 2.6, 1.7, 1.2, 0.95, 0.78 times a 3.9 final drive. Engine speed =
+      v * (1 + rear slip) / r * ratio * 60 / (2 pi), with r the vehicle's drawn tyre radius (the
+      engine turns with the driven rear wheels); idle_speed at rest, and max(idle_speed, that) when
+      moving (clutch slipping while pulling away in first gear). About 2075 rpm at 90 km/h in
+      sixth with the nominal radius and no slip.
+  upshift_speed:
+    value: 2500
+    unit: rpm
+    rationale: >-
+      Engine speed at which the gear schedule shifts up; after the largest ratio step (0.578,
+      first to second) the engine speed is 1444 rpm.
+  downshift_speed:
+    value: 1200
+    unit: rpm
+    rationale: >-
+      Engine speed below which the gear schedule shifts down. The loader requires
+      downshift_speed <= upshift_speed * min(r[n+1] / r[n]) - shift_margin, so an upshift never
+      triggers an immediate downshift (gear hunting).
+  shift_margin:
+    value: 100
+    unit: rpm
+    rationale: >-
+      Minimum gap between the engine speed just after an upshift and the downshift speed, so a
+      small speed loss right after a shift does not cause hunting.
+  idle_speed:
+    value: 750
+    unit: rpm
+    rationale: Idle speed of a small diesel engine.
+  engine_speed_max:
+    value: 4500
+    unit: rpm
+    rationale: Governed maximum speed of a small diesel engine.
+
+brakes:
+  front_brake_share:
+    value: 0.70
+    unit: "-"
+    rationale: Share of braking force on the front axle; front-biased as in most road vehicles.
+  brake_pressure_gain:
+    value: 10
+    unit: bar/(m/s2)
+    rationale: >-
+      Master cylinder pressure per m/s2 of friction braking at brake_reference_mass: pressure =
+      gain * F_brake / brake_reference_mass, with F_brake the friction brake force of the
+      longitudinal model (model/brakes.py); about 40 bar at 4 m/s2 for the reference mass.
+  brake_reference_mass:
+    value: 2800
+    unit: kg
+    rationale: Mass at which brake_pressure_gain is stated (unladen mass plus half the payload).
+  brake_switch_pressure:
+    value: 2
+    unit: bar
+    rationale: Pressure above which brake_pedal_pressed is reported (brake light switch).
+  brake_energy_to_disc:
+    value: 0.9
+    unit: "-"
+    rationale: Share of braking energy heating the disc; the rest heats pads and air directly.
+  disc_heat_capacity_front:
+    value: 3700
+    unit: J/K
+    rationale: About 8 kg of cast iron at 460 J/(kg K) per front disc.
+  disc_heat_capacity_rear:
+    value: 2800
+    unit: J/K
+    rationale: About 6 kg of cast iron at 460 J/(kg K) per rear disc.
+  disc_cooling_tau_standstill:
+    value: 600
+    unit: s
+    rationale: >-
+      First-order cooling time constant at standstill (natural convection). Law: 1/tau is affine
+      in speed (convective heat transfer assumed proportional to speed), through this value and
+      disc_cooling_tau_reference at disc_cooling_reference_speed: 1/tau(v) = (1 / tau_standstill)
+      * (1 + v / v_c), with v_c = reference_speed / (tau_standstill / tau_reference - 1) computed
+      in code. Same law on all four discs, which keeps the front/rear temperature rise ratio
+      constant. Also the time constant of the closed-form cooling while parked.
+  disc_cooling_tau_reference:
+    value: 150
+    unit: s
+    rationale: >-
+      Cooling time constant at disc_cooling_reference_speed (forced convection); second point of
+      the law above. Must be below disc_cooling_tau_standstill: discs cool faster when moving.
+  disc_cooling_reference_speed:
+    value: 20
+    unit: m/s
+    rationale: Speed at which disc_cooling_tau_reference is stated (72 km/h, rural driving).
+
+ecu_logic:
+  tyre_slip_stiffness:
+    value: 19
+    unit: "-"
+    rationale: >-
+      Longitudinal slip stiffness normalised by the wheel load (Magic Formula K_x / F_z at nominal
+      load, PKX1). A wheel's slip is F_x / (stiffness * F_z), linear far below the force peak, with
+      static axle loads. Per axle: braking force front_brake_share * F_brake on the front axle,
+      (1 - front_brake_share) * F_brake plus the engine drag on the rear (driven) axle; traction on
+      the rear axle. No published range was found, and none for van tyres. Example values from
+      MathWorks documentation (passenger-car tyres): 19 (Simscape Driveline, Tire (Magic
+      Formula), default constant coefficients B * C * D = 10 * 1.9 * 1), 21.39 (Vehicle Dynamics
+      Blockset, Combined Slip Wheel STI, default PKX1) and 21.51 (Simscape Driveline default
+      p_Kx1; the page cites Pacejka, Tire and Vehicle Dynamics, 2005). The lowest is used. A
+      softer tyre slips more, so the ECU margins (ecu_slip_speed_min) use a conservative floor
+      of 15.
+  abs_slip_threshold:
+    value: 0.15
+    unit: "-"
+    rationale: Braking slip above which ABS intervenes; never reached by v1.0 drive profiles.
+  tcs_slip_threshold:
+    value: 0.10
+    unit: "-"
+    rationale: >-
+      Traction slip of the rear (driven) wheels against the front wheels above which TCS
+      intervenes; never reached by v1.0 drive profiles.
+  esc_yaw_error_threshold:
+    value: 5
+    unit: deg/s
+    rationale: >-
+      Difference between measured yaw rate and the single-track reference v_ref * tan(delta) /
+      wheelbase (reference speed and road-wheel angle from the measured signals) above which ESC
+      intervenes; never reached by v1.0 drive profiles. Worst case over the same cases as
+      ecu_slip_speed_min, conservative values: margin 3.93, a yaw error of 1.27 deg/s (empty van
+      braking at decel_service_max on a 2 % descent, 16.7 km/h in a 10.8 m curve, true yaw rate
+      24.7 deg/s). Contributions: yaw rate noise 0.31 deg/s (3 sigma plus half resolution); the
+      reference speed 3.8 % low, 0.94 deg/s (slip 0.72, tyre radius bias 0.22, wheel speed noise
+      0.23, less 0.20 from the single front angle, the inner front wheel reading high and setting
+      the reference while braking, and less 0.03 from the yaw rate and angle errors in the
+      corrections); steering angle error 0.03 deg/s. Nominal values: margin 4.43.
+  ecu_reference_speed_min:
+    value: 5
+    unit: km/h
+    rationale: >-
+      Minimum-speed guard of the brake ECU, which works on measured wheel speeds: slip ratios are
+      taken over max(reference speed, this value), and the ESC yaw check is inactive below it. As
+      a pure ratio, wheel speed noise and quantisation (a difference of up to 2 * (3 * 0.05 +
+      0.005) = 0.31 km/h between two wheels) at 0.5 km/h would read as a slip of 0.6. The
+      ecu_slip_speed_min condition alone also blocks a flag there: the two guards are redundant
+      at low speed, and the margins do not depend on this one.
+  ecu_slip_speed_min:
+    value: 2
+    unit: km/h
+    rationale: >-
+      Minimum absolute slip: ABS and TCS also require a wheel speed difference above this value,
+      so a flag needs both the slip ratio and the absolute difference above their thresholds, and
+      the margin below is the larger of the two threshold-to-worst-case ratios. The ECU compares
+      measured wheel speeds after two kinematic corrections, in this order: on the front axle,
+      the projection onto the vehicle axis (times cos of the road-wheel angle from the measured
+      steering angle), then the yaw term per wheel (+/- yaw_rate * track_width / 2). One
+      road-wheel angle serves both front wheels, leaving +1.01 % (inner) and -0.94 % (outer) in
+      the 10 m curve. The reference speed is the fastest corrected wheel while the brake pedal is
+      pressed, the front mean otherwise; ABS needs the pedal pressed, TCS (rear wheels) released.
+      Worst case in normal driving (tests/unit/simulator/test_ecu.py), per segment kind of
+      drive_profile.yaml (urban, rural, downhill), over its grades (urban_grade_max,
+      rural_grade_max, downhill_grade_min..max up to a 10 % descent), its speeds every 0.1 km/h
+      up to its highest target speed, and the tightest curve allowed at each speed (its smallest
+      radius, wider where the curve speed law requires), both turn directions, empty and laden,
+      ambient -5 and 30 degC, tyre radius at both ends of tyre_radius_spread. Forces come from the
+      longitudinal model: service braking (decel_service_max), where the brakes supply what
+      rolling resistance, drag and the full engine drag on the rear axle do not, the largest
+      traction (accel_max or the engine power limit), or engine drag alone. Slips come from the
+      wheel model; the measured signals carry every sign combination of the largest measurement
+      errors (3 sigma plus half the resolution: 0.155 km/h per wheel, 0.305 deg/s of yaw rate,
+      0.35 deg of steering wheel angle, the last two through the corrections). Conservative case,
+      tyre_slip_stiffness floor 15 and payload_rear_axle_share 0.75, 0.88 and 1.0 (the ABS margin
+      falls steadily with the share; the worst TCS and ESC cases are the empty van, where the
+      share plays no part): lowest ABS margin 2.13 (urban, 2 % descent, laden, share 1.0,
+      13.5 km/h in the 10 m curve: front slip 4.59 % against rear 1.66 %, 0.94 km/h or 7.0 %);
+      lowest TCS margin 1.86 (urban, 2 % climb, empty, 20.0 km/h in a 15.4 m curve: rear slip
+      3.48 %, 1.08 km/h or 5.4 %; rural 3 % climb 1.88). Downhill braking on a 10 % descent: ABS
+      margin 2.38 (front 5.56 % against rear 1.92 % at 13.6 km/h). At speed the absolute
+      difference exceeds 2 km/h (2.53 km/h at 60 km/h on a 10 % descent, 2.98 km/h at 90 km/h on
+      a 3 % descent, laden, share 1.0) while the ratio stays at 4.2 % and 3.3 %: there the slip
+      ratio threshold alone prevents a flag. Nominal values (stiffness 19, share 0.88): ABS 2.54,
+      TCS 2.18. Without the front-axle correction the front wheels would read 1.02 km/h above the
+      rear ones in the 10 m curve.
+
+tyres:
+  tyre_pressure_nominal:
+    value: 3.8
+    unit: bar
+    rationale: Gauge pressure at 20 degC; light commercial tyres run at about 3.5 to 4.5 bar.
+  tyre_pressure_reference_temp:
+    value: 20
+    unit: degC
+    rationale: >-
+      Temperature at which the nominal pressure is set (cold tyre). Pressure follows temperature by
+      the ideal-gas law applied to absolute pressure.
+  tyre_warmup_rise:
+    value: 20
+    unit: K
+    rationale: >-
+      Steady temperature rise above ambient at tyre_warmup_reference_speed; target = ambient +
+      rise * min(1, v / reference speed). Plausible range 15 to 30 K.
+  tyre_warmup_reference_speed:
+    value: 20
+    unit: m/s
+    rationale: Speed at which the tyre reaches its full steady temperature rise.
+  tyre_thermal_tau:
+    value: 1200
+    unit: s
+    rationale: >-
+      First-order time constant of tyre warm-up and cool-down (about 20 min), also used for the
+      closed-form cooling while parked.
+
+engine:
+  coolant_thermostat_temp:
+    value: 90
+    unit: degC
+    rationale: Regulated coolant temperature once the thermostat opens.
+  coolant_load_rise:
+    value: 4
+    unit: K
+    rationale: >-
+      Rise of the regulated temperature at full load; target = thermostat + rise * pedal / 100,
+      which couples coolant temperature to load (spec section 4) and stays in the 85-95 degC band.
+  coolant_warmup_tau:
+    value: 480
+    unit: s
+    rationale: >-
+      First-order warm-up time constant towards the regulated band, engine running (about 8 min).
+  coolant_cooldown_tau:
+    value: 3600
+    unit: s
+    rationale: >-
+      First-order cool-down time constant with the engine off (engine block heat capacity), used
+      for the closed-form cooling while parked.
+
+variation:
+  tyre_radius_spread:
+    value: 0.01
+    unit: "-"
+    rationale: >-
+      Per-vehicle relative spread (uniform, plus or minus) of the tyre rolling radius, same for the
+      four wheels (one tyre set); per-wheel spread would fake cornering on straight roads.
+  disc_heat_capacity_vehicle_spread:
+    value: 0.05
+    unit: "-"
+    rationale: >-
+      Per-vehicle relative spread (uniform, plus or minus) of disc heat capacity (disc make,
+      wear).
+  disc_heat_capacity_wheel_spread:
+    value: 0.02
+    unit: "-"
+    rationale: >-
+      Per-wheel relative spread (uniform, plus or minus) on top of the vehicle spread. Rises scale
+      with 1 / heat capacity, so the left/right rise difference on an axle stays within
+      2 * 0.02 / 0.98 = 4.1 % of the rise (plausibility.yaml, disc_lr_spread_rel_max).
+  tyre_pressure_wheel_spread:
+    value: 0.1
+    unit: bar
+    rationale: Per-wheel spread (uniform, plus or minus) of the cold pressure set by the operator.

@@ -1,0 +1,145 @@
+"""Shared test helper: drive a few trips and compute their steering, for model invariant tests;
+the slip bound the configuration allows; the a_lat tolerance on measured signals; short day
+plans for the fleet loop; the absolute tolerance of the temperature law checks."""
+
+import math
+from dataclasses import dataclass
+
+import numpy as np
+
+from simulator.config_files import van_model
+from simulator.fleet import Vehicle, VehicleParameters, draw_vehicle_parameters, fleet_config
+from simulator.fleet_state import PlanDay
+from simulator.model.drive import Trace, drive_trips
+from simulator.model.forces import air_density
+from simulator.model.longitudinal import (
+    LongitudinalParameters,
+    acceleration_limits,
+    split_forces,
+)
+from simulator.model.steering import CurveTracker, SteeringParameters, SteeringState, steering_state
+from simulator.model.wheels import WheelParameters, axle_slip
+from simulator.profile.day_plan import DayPlan
+from simulator.profile.road import Road
+from simulator.profile.speed_plan import DriverParameters
+from simulator.profile_config import drive_profile, trip_overrun_bound
+from simulator.sensors import SensorParameters, error_bound
+
+# K: absolute floor for the temperature law checks, rtol 1e-12 at a 100 K temperature scale. Near
+# 0 degC a relative tolerance alone asks for more than float64 gives: numpy's exp may differ from
+# math.exp in the last bit on some CPUs (SIMD kernels), an error of |T - T_target| times one ulp,
+# below 1e-13 K. Broken laws (Euler step, wrong time constant or target) give 1e-8 K and more.
+TEMPERATURE_ATOL = 1e-10
+
+
+@dataclass(frozen=True)
+class DrivenTrip:
+    road: Road
+    trace: Trace
+    mass: float  # kg
+    density: float  # kg/m3, air density of the day
+    positions: np.ndarray  # m, at the start of each step, then after the last step
+    curvature: np.ndarray  # 1/m, at `positions`
+    steering: SteeringState  # one entry per step
+
+
+def drawn(seed: int, number: int) -> VehicleParameters:
+    """Parameters drawn for VAN-<number> (fleet.py), the van in slot number - 1 of
+    drive_with_steering."""
+    vehicle = Vehicle(id=f"VAN-{number:03d}", number=number, model="nordwind-lv1", batch="test")
+    return draw_vehicle_parameters(seed, vehicle, van_model(), fleet_config())
+
+
+def drive_with_steering(
+    seed: int, trip: int, duration: float, ambient: float, vans: int = 4
+) -> list[DrivenTrip]:
+    """`vans` vans from empty to laden drive trip `trip` of day 0 side by side."""
+    model, profile = van_model(), drive_profile()
+    vehicles = [f"VAN-{n:03d}" for n in range(1, vans + 1)]
+    roads = [Road(seed, vehicle, 0, trip, profile) for vehicle in vehicles]
+    masses = list(np.linspace(2300, 3300, len(roads)))
+    density = air_density(101300, ambient)
+    traces = drive_trips(
+        roads,
+        [duration] * len(roads),
+        masses,
+        density,
+        LongitudinalParameters.from_model(model),
+        DriverParameters.from_configs(profile, model),
+        time_limit=duration + 2 * trip_overrun_bound(profile),
+    )
+    p = SteeringParameters.from_model(model)
+    results = []
+    for road, trace, mass in zip(roads, traces, masses, strict=True):
+        tracker = CurveTracker(1)
+        tracker.start_trip(0, road)
+        # Positions at the start of each step, then the position after the last step.
+        positions = np.append(trace.position, trace.next_position[-1])
+        kappa = np.empty_like(positions)
+        for k, s in enumerate(positions):
+            tracker.update(np.array([s]), np.array([True]))
+            kappa[k] = tracker.curvature(np.array([s]))[0]
+        state = steering_state(kappa[:-1], kappa[1:], trace.speed, p)
+        results.append(DrivenTrip(road, trace, float(mass), density, positions, kappa, state))
+    return results
+
+
+def lateral_tolerance(
+    speed: np.ndarray, yaw_rate: np.ndarray, rear_bias: np.ndarray, p: SensorParameters
+) -> np.ndarray:
+    """Bound of |a_m - v_m psi_m|, m/s2, with v_m the mean of the measured rear wheel speeds,
+    from the true speed v, yaw rate psi (rad/s) and the rear readings' bias
+    |(1 + slip_rear) r_nom / r - 1| (their true mean is v (1 + slip_rear) r_nom / r, the yaw
+    offsets cancel). With a = v psi:
+
+        |a_m - v_m psi_m| <= eps_a + |v| eps_psi + |psi| eps_v + eps_v eps_psi
+
+    eps_a and eps_psi the error bounds of accel_lat and yaw_rate (rad/s), eps_v the wheel speed
+    error bound (m/s) plus |v| * rear_bias."""
+    eps_a = error_bound("accel_lat", p)
+    eps_psi = math.radians(error_bound("yaw_rate", p))
+    eps_v = error_bound("wheel_speed_rl", p) / 3.6 + np.abs(speed) * rear_bias
+    return eps_a + np.abs(speed) * eps_psi + np.abs(yaw_rate) * eps_v + eps_v * eps_psi
+
+
+def slip_bound(masses: np.ndarray) -> float:
+    """Largest |slip| the model can produce, from the configuration: service braking on the
+    steepest descent and the largest traction on the steepest climb, at the lowest speed (no drag
+    helping), over the given masses, with the model's stiffness and axle loads."""
+    model, profile = van_model(), drive_profile()
+    longitudinal, p = LongitudinalParameters.from_model(model), WheelParameters.from_model(model)
+    speed = np.full_like(masses, 0.1)
+    descent = np.full_like(masses, -profile.si("downhill_grade_max"))
+    climb = np.full_like(
+        masses, max(profile.si(f"{kind}_grade_max") for kind in ("urban", "rural"))
+    )
+    bound = 0.0
+    braking = np.full_like(masses, -longitudinal.decel_service_max)
+    forces = split_forces(braking, speed, descent, masses, 1.2, longitudinal)
+    bound = max(
+        bound, *(np.max(np.abs(s)) for s in axle_slip(forces.engine, forces.brake, masses, p))
+    )
+    _, highest = acceleration_limits(speed, climb, masses, 1.2, longitudinal)
+    forces = split_forces(highest, speed, climb, masses, 1.2, longitudinal)
+    bound = max(
+        bound, *(np.max(np.abs(s)) for s in axle_slip(forces.engine, forces.brake, masses, p))
+    )
+    return float(bound)
+
+
+def short_plans(durations: list[float], breaks: list[float], start: float = 6 * 3600.0) -> PlanDay:
+    """The same trips every day for every vehicle, VAN-<n> starting n * 37 s after `start`."""
+
+    def plan(root_seed: int, vehicle_id: str, day: int) -> DayPlan:
+        shift_start = start + 37.0 * int(vehicle_id.split("-")[1])
+        return DayPlan(
+            vehicle_id=vehicle_id,
+            day=day,
+            shift_start=shift_start,
+            shift_end=shift_start + sum(durations) + sum(breaks),
+            trip_durations=tuple(durations),
+            breaks=tuple(breaks),
+            lunch_after_trip=1 if len(durations) > 1 else 0,
+        )
+
+    return plan
