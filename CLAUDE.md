@@ -54,6 +54,8 @@ make setup      # uv sync + pre-commit install
 make lint       # ruff, terraform fmt -check, tflint, hadolint
 make test       # unit tests with coverage
 make test-int   # integration tests against LocalStack (requires `lstk` running)
+make schema     # regenerate the telemetry JSON Schema from simulator/catalogue.yaml
+make vehicle-day  # run and check one fleet day (10 vans, seed 42), plot docs/assets/m1-vehicle-day.png
 make up         # start LocalStack and local services
 make down       # stop everything
 ```
@@ -92,6 +94,9 @@ measured values; never invent figures.
 ## Commit messages
 
 Format: `type(scope): imperative summary` (max 72 chars), blank line, body explaining *why*, then `Refs: FR-xx`.
+List in `Refs:` only the requirements whose acceptance criterion the commit's tests exercise, or whose status the
+commit changes. A commit that does neither (a refactor, tooling, a document that changes no status) has no `Refs`
+line.
 
 | Type | Use | Scopes |
 | --- | --- | --- |
@@ -131,9 +136,17 @@ Keep the `Co-Authored-By` trailer that Claude Code adds: AI assistance is disclo
 **Simulator**
 - Follow `docs/simulator-spec.md`. The signal catalogue (`simulator/catalogue.yaml`) is the single source of truth;
   the JSON schema is generated from it, never edited by hand.
+- The simulator finds its data files (catalogue, config, scenarios, schema) through `SIM_HOME`, read only by
+  `simulator/src/simulator/paths.py`. Default: the `simulator/` directory of the source tree; the container image
+  sets it explicitly. Tests use the default.
 - Keep models low-order (kinematics, single-track model, first-order thermal). No new signals or fault scenarios
   beyond the spec without an issue.
-- Physics is deterministic for a given seed; all randomness comes from one seeded generator.
+- Physics is deterministic for a given seed. All randomness derives from one root seed, with independent streams
+  per vehicle and per purpose (`simulator/src/simulator/rng.py`): a vehicle's streams are keyed by a BLAKE2b
+  digest of its ID, never by Python `hash()` or its position in the fleet, so adding a vehicle does not change
+  the other vehicles' data. Never share one generator across vehicles; quantities common to the whole fleet, such
+  as the day's ambient conditions, come from fleet streams (`fleet_generator`), never from a vehicle's stream.
+  Draw per vehicle in blocks, not per step.
 - Every coupling in the spec has a property-based invariant test (Hypothesis) (NFR-15).
 - Chassis fault codes are fictional Nordwind codes; only standard OBD-II P-codes may be real.
 - Fault codes use a subset of the UDS DTC status bits (FR-18); do not implement UDS services in this project.
@@ -159,4 +172,8 @@ Keep the `Co-Authored-By` trailer that Claude Code adds: AI assistance is disclo
 - Do not add features outside the current issue; propose them as a new issue labelled `v2`.
 - Do not disable, skip or weaken tests or linters to make CI pass.
 - Do not commit generated files, local state (`*.tfstate`, `.terraform/`), `.env`, or model weights.
+  Two exceptions: the telemetry schema `simulator/schema/telemetry.schema.json` is committed as the contract
+  with the pipeline, regenerated with `make schema` and checked for drift by a unit test; and milestone
+  captures in `docs/assets/` are committed, generated ones included (e.g. `m1-vehicle-day.png`, from
+  `make vehicle-day`).
 - Do not leave TODOs without a linked issue.

@@ -49,7 +49,7 @@ requirement → code → test traceability.
 | NFR-12 | Performance | Agent latency measured at p50 and p95 on the 8 GB GPU; p95 target set after the M6 benchmark | Benchmark report in `docs/evaluation/` | M6 | Planned |
 | NFR-13 | Performance | Measurement visible in storage under 5 s after publication, locally | Timed integration test | M2 | Planned |
 | NFR-14 | Portability | LLM provider and model switched by configuration, without code changes | Benchmark run on at least 3 models with the same code | M6 | Planned |
-| NFR-15 | Fidelity | Simulated data is physically plausible and internally consistent (couplings between speed, wheel speeds, yaw rate, lateral acceleration, braking and temperatures) | Property-based invariant tests; 100 vehicles × 24 simulated hours yield zero anomalies; expert review of a simulated vehicle-day plot | M1 | Planned |
+| NFR-15 | Fidelity | Simulated data is physically plausible and internally consistent (couplings between speed, wheel speeds, yaw rate, lateral acceleration, braking and temperatures) | Property-based invariant tests; 100 vehicles × 24 simulated hours yield zero anomalies; expert review of a simulated vehicle-day plot | M1 | In progress |
 
 ## Status notes
 
@@ -61,6 +61,11 @@ requirement → code → test traceability.
   Actions (commit SHAs) and CI tool versions. Pinned in M1: the LocalStack image used by `make up`
   (`localstack/localstack-pro:2026.9.1`) and the `lstk` CLI (1.3.0, release checksum verified in
   `docs/SETUP.md`). Remaining: the simulator image (M1), Terraform and providers (M2).
+- **NFR-15:** property-based invariant tests (Hypothesis) in `tests/unit/simulator/`. Vehicle-day plot
+  `docs/assets/m1-vehicle-day.png` (seed 42, VAN-001, `make vehicle-day`) reviewed on 2 November 2026 by the
+  author, chassis engineering background: no model change; one open item,
+  [#8](https://github.com/Gikaze/vehicle-telemetry-diagnostic-agent/issues/8) (v2). Remaining: 100 vehicles × 24
+  simulated hours with zero anomalies (M1, telemetry stream).
 
 ## Open questions
 
