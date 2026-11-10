@@ -1,4 +1,5 @@
-"""Aggregator: the fleet loop's 10 Hz samples into periodic window records (spec section 5).
+"""Aggregator: the fleet loop's 10 Hz samples into periodic window records and event records (spec
+section 5).
 
 Windows follow each trip: the first starts at the trip's first step, each later one
 WINDOW_STEPS steps after the previous one, and the last window of a trip holds the remaining 1 to
@@ -25,7 +26,12 @@ Per boolean signal: `last`, and `count`, the rising edges (false to true) betwee
 samples of the same trip. The value before a window's first sample is the previous window's last
 sample in the trip; a trip's first sample has no predecessor and is never counted as an edge.
 
-Records of one step come in slot order.
+Event records (spec section 5): a rising edge of a boolean signal marked `event` in the catalogue
+(the same edges `count` counts, so never on a trip's first sample) gives an EventRecord at the
+step where the edge is seen, at once, without waiting for the window to close.
+
+Records of one step come in slot order; for each slot, its event records (in catalogue order) come
+before the periodic record of a window that closes at that step, which contains the edge.
 """
 
 from dataclasses import dataclass
@@ -62,6 +68,24 @@ class PeriodicRecord:
         return self.steps / STEPS_PER_SECOND
 
 
+@dataclass(frozen=True)
+class EventRecord:
+    """A rising edge of an event signal, seen at fleet step `step`; no sequence number yet."""
+
+    vehicle_id: str
+    step: int  # the sample where the signal is first true
+    signal: str
+    value: bool  # the new value: true for a rising edge
+
+    @property
+    def window_s(self) -> float:
+        """The physics step the sample describes (spec section 4), s."""
+        return 1 / STEPS_PER_SECOND
+
+
+Record = PeriodicRecord | EventRecord
+
+
 class Aggregator:
     """Open windows of every slot of a fleet, fed one FleetSample per step."""
 
@@ -69,6 +93,8 @@ class Aggregator:
         self.vehicle_ids = vehicle_ids
         self.numeric = tuple(s for s in catalogue.signals if s.is_number)
         self.boolean = tuple(s for s in catalogue.signals if not s.is_number)
+        self.event_columns = np.array([s.event for s in self.boolean], dtype=bool)
+        self.event_names = tuple(s.name for s in self.boolean if s.event)
         self.invalid = np.array([s.invalid for s in self.numeric], dtype=float)
         self.offset = np.array([s.offset for s in self.numeric], dtype=float)
         self.resolution = np.array([s.resolution for s in self.numeric], dtype=float)
@@ -84,8 +110,9 @@ class Aggregator:
         self.previous = np.zeros((n, b), dtype=bool)
         self.in_trip = np.zeros(n, dtype=bool)  # `previous` holds a sample of the current trip
 
-    def feed(self, sample: FleetSample) -> list[PeriodicRecord]:
-        """Add the active slots' samples of one step; the records of the windows they close."""
+    def feed(self, sample: FleetSample) -> list[Record]:
+        """Add the active slots' samples of one step; the event records of this step and the
+        periodic records of the windows it closes."""
         slots = np.flatnonzero(sample.active)
         if slots.size == 0:
             return []
@@ -108,9 +135,18 @@ class Aggregator:
         self.in_trip[slots] = True
         self.count[slots] += 1
         ended = sample.ended[slots]
-        closing = slots[(self.count[slots] == WINDOW_STEPS) | ended]
-        records = [self._record(int(i), bool(sample.ended[i])) for i in closing]
-        self.count[closing] = 0
+        closes = (self.count[slots] == WINDOW_STEPS) | ended
+        events = rising[:, self.event_columns]
+        records: list[Record] = []
+        for r in np.flatnonzero(closes | events.any(axis=1)):
+            i = int(slots[r])
+            for j in np.flatnonzero(events[r]):
+                records.append(
+                    EventRecord(self.vehicle_ids[i], sample.step, self.event_names[j], True)
+                )
+            if closes[r]:
+                records.append(self._record(i, bool(ended[r])))
+        self.count[slots[closes]] = 0
         self.in_trip[slots[ended]] = False
         return records
 

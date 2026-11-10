@@ -15,6 +15,10 @@
 #   invalid      value sent when the ECU cannot provide the signal (null for booleans)
 #   dynamic      true if modelled dynamically in v1.0; false if static or nominal (spec section 3)
 #   description  optional; given for every signal whose sign carries a direction
+#   event        optional, booleans only (default false): true if a rising edge (false to true
+#                within a trip) is sent at once as an event message (spec section 5). Set on the
+#                ABS, ESC and TCS interventions. Warning lamps and sas_calibrated are not event
+#                signals in v1.0.
 #
 # Ranges are sensor measurement ranges, not mechanical limits. Mechanical limits, such as the
 # steering lock, are vehicle parameters in simulator/config/ with their rationale.
@@ -144,6 +148,7 @@ signals:
     offset: null
     invalid: null
     dynamic: true
+    event: true
   - name: esc_active
     group: braking
     ecu: abs_esc
@@ -155,6 +160,7 @@ signals:
     offset: null
     invalid: null
     dynamic: true
+    event: true
   - name: tcs_active
     group: braking
     ecu: abs_esc
@@ -166,6 +172,7 @@ signals:
     offset: null
     invalid: null
     dynamic: true
+    event: true
   - name: brake_disc_temp_est_fl
     group: braking
     ecu: abs_esc

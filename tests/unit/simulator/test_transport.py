@@ -15,7 +15,7 @@ import yaml
 from driven import short_plans
 
 from simulator import stream
-from simulator.aggregator import PeriodicRecord
+from simulator.aggregator import EventRecord, PeriodicRecord
 from simulator.config_files import TRANSPORT_RATES, load_stream_config, stream_config
 from simulator.fleet import Vehicle, load_fleet
 from simulator.fleet_state import FleetSimulation
@@ -68,6 +68,33 @@ def by_vehicle(delivered: list[Sequenced]) -> dict[str, list[Sequenced]]:
     for message in delivered:
         result.setdefault(message.record.vehicle_id, []).append(message)
     return result
+
+
+def test_one_counter_serves_every_message_type() -> None:
+    """Events and periodic records of one vehicle share its counter: 0, 1, 2, ... in arrival
+    order, whatever the type."""
+    records: list = []
+    for k in range(12):
+        if k % 3 == 1:
+            records.append(EventRecord("VAN-001", k, "abs_active", True))
+        else:
+            records.append(record("VAN-001", k, k == 11))
+    delivered = Transport(SEED, ("VAN-001",), TransportRates()).send(records)
+    assert [m.record for m in delivered] == records
+    assert seqs(delivered) == list(range(12))
+
+
+def test_an_event_never_ends_a_trip() -> None:
+    """A held message stays held when the next message, an event, is lost (a trip's end would
+    release it): it comes after the next delivered message, the trip's last record."""
+    records = [
+        record("VAN-001", 0),
+        EventRecord("VAN-001", 1, "esc_active", True),
+        record("VAN-001", 2, True),
+    ]
+    transport = Transport(SEED, ("VAN-001",), TransportRates(gap=0.5, reorder=0.5))
+    transport.vehicles["VAN-001"].generator = FixedDraws([HOLD, DROP, NONE])  # type: ignore[assignment]
+    assert seqs(transport.send(records)) == [2, 0]
 
 
 @pytest.fixture(scope="module")

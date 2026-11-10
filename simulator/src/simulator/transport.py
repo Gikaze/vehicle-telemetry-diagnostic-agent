@@ -26,14 +26,12 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from simulator.aggregator import PeriodicRecord
+from simulator.aggregator import PeriodicRecord, Record
 from simulator.params import Config
 from simulator.rng import Stream, vehicle_generator
 
 DRAW_BLOCK = 1024  # messages of draws taken at once per vehicle
 GAP, DUPLICATE, REORDER = range(3)
-
-Record = PeriodicRecord
 
 
 @dataclass(frozen=True)
@@ -63,7 +61,9 @@ class TransportRates:
 
 
 def ends_trip(record: Record) -> bool:
-    return record.last_of_trip
+    """The periodic record of a trip's last window; an event never ends a trip (it comes before
+    the periodic record of its window)."""
+    return isinstance(record, PeriodicRecord) and record.last_of_trip
 
 
 class _Vehicle:

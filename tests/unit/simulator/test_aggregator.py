@@ -16,7 +16,7 @@ import pytest
 from driven import short_plans
 
 from simulator import stream
-from simulator.aggregator import Aggregator, PeriodicRecord
+from simulator.aggregator import Aggregator, EventRecord, PeriodicRecord
 from simulator.catalogue import Signal, catalogue, to_raw
 from simulator.constants import AGGREGATION_WINDOW, PHYSICS_DT
 from simulator.fleet import load_fleet
@@ -155,6 +155,12 @@ def test_no_window_while_parked(run: Run) -> None:
     assert parked  # some vehicle is parked during the run
 
 
+def test_a_normal_run_sends_no_event(run: Run) -> None:
+    """ABS, ESC and TCS never intervene on the v1.0 profiles (spec section 8), so the run holds
+    periodic records only; the event rules are checked on hand-made samples below."""
+    assert run.records and all(isinstance(r, PeriodicRecord) for r in run.records)
+
+
 def test_records_come_by_closing_step_then_slot(run: Run) -> None:
     keys = [(r.start_step + r.steps - 1, run.vehicle_ids.index(r.vehicle_id)) for r in run.records]
     assert keys == sorted(keys) and len(set(keys)) == len(keys)
@@ -268,15 +274,24 @@ def make_sample(
     )
 
 
-def feed_series(name: str, series: list, ends: set[int] = frozenset()) -> list[PeriodicRecord]:
-    """One slot fed `series` of signal `name`, one sample per step from step 0; a trip ends after
-    each index in `ends` and after the last sample."""
+def feed_all(
+    series: dict[str, list], ends: set[int] = frozenset()
+) -> list[PeriodicRecord | EventRecord]:
+    """One slot fed the given signal series (same length), one sample per step from step 0; a
+    trip ends after each index in `ends` and after the last sample. Every record, in order."""
     aggregator = Aggregator(catalogue(), ("VAN-001",))
-    records = []
-    for k, value in enumerate(series):
-        ended = k in ends or k == len(series) - 1
-        records += aggregator.feed(make_sample(k, {name: [value]}, [True], [ended]))
+    length = len(next(iter(series.values())))
+    records: list[PeriodicRecord | EventRecord] = []
+    for k in range(length):
+        ended = k in ends or k == length - 1
+        values = {name: [values[k]] for name, values in series.items()}
+        records += aggregator.feed(make_sample(k, values, [True], [ended]))
     return records
+
+
+def feed_series(name: str, series: list, ends: set[int] = frozenset()) -> list[PeriodicRecord]:
+    """The periodic records of one slot fed `series` of signal `name` (see feed_all)."""
+    return [r for r in feed_all({name: series}, ends) if isinstance(r, PeriodicRecord)]
 
 
 def test_an_edge_on_a_window_s_first_sample_counts_in_that_window() -> None:
@@ -348,3 +363,74 @@ def test_a_parked_slot_is_never_read() -> None:
     (record,) = records
     j = [s.name for s in NUMERIC].index("coolant_temp")
     assert record.vehicle_id == "VAN-001" and record.numeric[j] == (81.0, 80.0, 82.0, 82.0)
+
+
+# Event records (spec section 5): rising edges of the catalogue's event signals.
+
+
+def events_of(records: list) -> list[tuple[int, str]]:
+    return [(r.step, r.signal) for r in records if isinstance(r, EventRecord)]
+
+
+def test_the_event_signals_are_the_interventions() -> None:
+    assert catalogue().event_names == ("abs_active", "esc_active", "tcs_active")
+
+
+def test_an_event_for_each_rising_edge_of_an_event_signal_only() -> None:
+    """abs_active rises at steps 2 and 6 (held true in between counts once); brake_pedal_pressed
+    rises at the same steps but has no event; esc_active is true from the trip's first sample,
+    which is never an edge."""
+    series = {
+        "abs_active": [False, False, True, True, True, False, True, True],
+        "brake_pedal_pressed": [False, False, True, True, True, False, True, True],
+        "esc_active": [True] * 8,
+    }
+    records = feed_all(series)
+    assert events_of(records) == [(2, "abs_active"), (6, "abs_active")]
+    for record in records:
+        if isinstance(record, EventRecord):
+            assert (record.vehicle_id, record.value) == ("VAN-001", True)
+            assert repr(record.window_s) == "0.1"
+
+
+def test_no_event_on_a_new_trip_s_first_sample() -> None:
+    """tcs_active ends the first trip true and starts the second true, then rises again."""
+    series = {"tcs_active": [False, True, True, True, False, True]}
+    assert events_of(feed_all(series, ends={2})) == [(1, "tcs_active"), (5, "tcs_active")]
+
+
+def test_events_come_before_the_periodic_record_of_their_window() -> None:
+    """Edges of tcs_active and abs_active on the window's last sample (step 99): the two events,
+    in catalogue order, then the window's periodic record, which counts both edges."""
+    series = {
+        "abs_active": [False] * 99 + [True, True],
+        "tcs_active": [False] * 99 + [True, True],
+    }
+    records = feed_all(series)
+    kinds = [(type(r).__name__, getattr(r, "step", None)) for r in records]
+    assert kinds == [
+        ("EventRecord", 99),
+        ("EventRecord", 99),
+        ("PeriodicRecord", None),
+        ("PeriodicRecord", None),
+    ]
+    assert [r.signal for r in records[:2]] == ["abs_active", "tcs_active"]
+    j = [s.name for s in BOOLEAN].index("abs_active")
+    assert records[2].boolean[j] == (True, 1)
+
+
+def test_events_and_records_of_one_step_come_slot_by_slot() -> None:
+    """Two slots, an esc_active edge on both at the last step of their window: slot 0's event and
+    record, then slot 1's."""
+    aggregator = Aggregator(catalogue(), ("VAN-001", "VAN-002"))
+    records = []
+    for k in range(3):
+        flag = [k == 2, k == 2]
+        sample = make_sample(k, {"esc_active": flag}, [True, True], [k == 2, k == 2])
+        records += aggregator.feed(sample)
+    assert [(type(r).__name__, r.vehicle_id) for r in records] == [
+        ("EventRecord", "VAN-001"),
+        ("PeriodicRecord", "VAN-001"),
+        ("EventRecord", "VAN-002"),
+        ("PeriodicRecord", "VAN-002"),
+    ]

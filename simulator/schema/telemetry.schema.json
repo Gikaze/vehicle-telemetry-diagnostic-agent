@@ -5,6 +5,9 @@
   "oneOf": [
     {
       "$ref": "#/$defs/periodic_message"
+    },
+    {
+      "$ref": "#/$defs/event_message"
     }
   ],
   "$defs": {
@@ -1447,6 +1450,66 @@
         "window_start",
         "window_s",
         "signals"
+      ],
+      "additionalProperties": false
+    },
+    "event_message": {
+      "type": "object",
+      "description": "A rising edge of an event signal, sent at once (spec section 5); window_start is the time of the sample where the signal is first true.",
+      "properties": {
+        "message_type": {
+          "const": "event"
+        },
+        "schema_version": {
+          "const": 1
+        },
+        "vehicle_id": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9]*-[0-9]{3,}$"
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Per-vehicle monotonic sequence counter."
+        },
+        "window_start": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+          "description": "Start of the window in simulated time, ISO 8601 UTC."
+        },
+        "window_s": {
+          "const": 0.1,
+          "description": "The physics step the sample describes, in seconds."
+        },
+        "trigger": {
+          "type": "object",
+          "properties": {
+            "signal": {
+              "enum": [
+                "abs_active",
+                "esc_active",
+                "tcs_active"
+              ]
+            },
+            "value": {
+              "const": true
+            }
+          },
+          "required": [
+            "signal",
+            "value"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "message_type",
+        "schema_version",
+        "vehicle_id",
+        "seq",
+        "window_start",
+        "window_s",
+        "trigger"
       ],
       "additionalProperties": false
     }

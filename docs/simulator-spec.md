@@ -43,7 +43,8 @@ parking brake, gearbox, lighting, body, battery, GNSS.
 
 The catalogue lives in `simulator/catalogue.yaml` and is the **single source of truth**: the telemetry JSON
 schema is generated from it, and tests check every emitted value against it. Each entry defines: name, unit,
-physical range, resolution, source ECU, invalid value, and whether it is modelled dynamically in v1.0.
+physical range, resolution, source ECU, invalid value, and whether it is modelled dynamically in v1.0; a boolean
+may also be marked `event`, so that its rising edge is sent at once as an event message (section 5).
 
 | Group (source ECU) | Signals | v1.0 behaviour |
 | --- | --- | --- |
@@ -134,8 +135,17 @@ emitted (measured) samples:
   trip; the value before a window's first sample is the previous window's last one, and a trip's first sample
   is never an edge.
 
+Event messages: a rising edge of a boolean marked `event` in the catalogue (`abs_active`, `esc_active`,
+`tcs_active` in v1.0; warning lamps and `sas_calibrated` are not event signals in v1.0) is sent at
+the step where it is seen, with `trigger: {signal, value: true}`. These are the same edges `count` counts, so
+a trip's first sample never sends one. Within a step, a vehicle's events come before the periodic message of a
+window that closes at that step, which counts the same edges. No event is sent in a normal v1.0 stream (section
+8: ABS, TCS and ESC never intervene); DTC events come with the fault overlay (section 6).
+
 **Message envelope.** Every message carries `vehicle_id`, `seq` (monotonic sequence counter), `window_start`,
-`window_s` and `schema_version`, similar in spirit to end-to-end protection counters on vehicle networks.
+`window_s` and `schema_version`, similar in spirit to end-to-end protection counters on vehicle networks. For an
+event, `window_start` is the time of the sample where the edge is seen and `window_s` is 0.1, the physics step
+that sample describes (section 4).
 
 **Delivery realism.** The transport layer injects, at configurable rates: gaps (e.g. tunnels), duplicates and
 out-of-order delivery. The pipeline must ingest idempotently: a duplicate never creates a second measurement,

@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from simulator.catalogue import Catalogue, Signal, load_catalogue
-from simulator.constants import AGGREGATION_WINDOW
+from simulator.constants import AGGREGATION_WINDOW, PHYSICS_DT
 from simulator.paths import schema_path
 
 DRAFT = "https://json-schema.org/draft/2020-12/schema"
@@ -20,6 +20,7 @@ VEHICLE_ID_PATTERN = r"^[A-Z][A-Z0-9]*-[0-9]{3,}$"
 # ISO 8601 UTC with milliseconds, e.g. 2026-01-05T07:30:00.000Z (simulated time).
 TIMESTAMP_PATTERN = r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$"
 WINDOW_S_MAX = AGGREGATION_WINDOW
+EVENT_WINDOW_S = PHYSICS_DT  # an event describes one physics step (spec section 4)
 
 BOOLEAN_STATS = {
     "type": "object",
@@ -82,11 +83,75 @@ def build_schema(catalogue: Catalogue) -> dict[str, Any]:
         else:
             signal_properties[signal.name] = {"$ref": "#/$defs/stats.boolean"}
     defs["stats.boolean"] = BOOLEAN_STATS
-    defs["periodic_message"] = {
+    defs["periodic_message"] = message_definition(
+        catalogue,
+        kind="periodic",
+        description="Summary of one vehicle over one aggregation window (spec section 5).",
+        window_s={
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": WINDOW_S_MAX,
+            "description": "Window length in seconds; below 10 for the last window of a trip.",
+        },
+        body=(
+            "signals",
+            {
+                "type": "object",
+                "properties": signal_properties,
+                "required": list(catalogue.names),
+                "additionalProperties": False,
+            },
+        ),
+    )
+    defs["event_message"] = message_definition(
+        catalogue,
+        kind="event",
+        description=(
+            "A rising edge of an event signal, sent at once (spec section 5); window_start is "
+            "the time of the sample where the signal is first true."
+        ),
+        window_s={
+            "const": EVENT_WINDOW_S,
+            "description": "The physics step the sample describes, in seconds.",
+        },
+        body=(
+            "trigger",
+            {
+                "type": "object",
+                "properties": {
+                    "signal": {"enum": list(catalogue.event_names)},
+                    "value": {"const": True},
+                },
+                "required": ["signal", "value"],
+                "additionalProperties": False,
+            },
+        ),
+    )
+    return {
+        "$schema": DRAFT,
+        "title": "Nordwind van telemetry message",
+        "description": (
+            "Generated from simulator/catalogue.yaml by `make schema`; do not edit by hand."
+        ),
+        "oneOf": [{"$ref": "#/$defs/periodic_message"}, {"$ref": "#/$defs/event_message"}],
+        "$defs": defs,
+    }
+
+
+def message_definition(
+    catalogue: Catalogue,
+    kind: str,
+    description: str,
+    window_s: dict[str, Any],
+    body: tuple[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """The envelope every message carries (spec section 5), then its body field."""
+    name, definition = body
+    return {
         "type": "object",
-        "description": "Summary of one vehicle over one aggregation window (spec section 5).",
+        "description": description,
         "properties": {
-            "message_type": {"const": "periodic"},
+            "message_type": {"const": kind},
             "schema_version": {"const": catalogue.schema_version},
             "vehicle_id": {"type": "string", "pattern": VEHICLE_ID_PATTERN},
             "seq": {
@@ -99,18 +164,8 @@ def build_schema(catalogue: Catalogue) -> dict[str, Any]:
                 "pattern": TIMESTAMP_PATTERN,
                 "description": "Start of the window in simulated time, ISO 8601 UTC.",
             },
-            "window_s": {
-                "type": "number",
-                "exclusiveMinimum": 0,
-                "maximum": WINDOW_S_MAX,
-                "description": "Window length in seconds; below 10 for the last window of a trip.",
-            },
-            "signals": {
-                "type": "object",
-                "properties": signal_properties,
-                "required": list(catalogue.names),
-                "additionalProperties": False,
-            },
+            "window_s": window_s,
+            name: definition,
         },
         "required": [
             "message_type",
@@ -119,18 +174,9 @@ def build_schema(catalogue: Catalogue) -> dict[str, Any]:
             "seq",
             "window_start",
             "window_s",
-            "signals",
+            name,
         ],
         "additionalProperties": False,
-    }
-    return {
-        "$schema": DRAFT,
-        "title": "Nordwind van telemetry message",
-        "description": (
-            "Generated from simulator/catalogue.yaml by `make schema`; do not edit by hand."
-        ),
-        "oneOf": [{"$ref": "#/$defs/periodic_message"}],
-        "$defs": defs,
     }
 
 

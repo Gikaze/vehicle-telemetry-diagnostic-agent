@@ -26,7 +26,7 @@ REQUIRED_FIELDS = (
     "invalid",
     "dynamic",
 )
-OPTIONAL_FIELDS = ("description",)
+OPTIONAL_FIELDS = ("description", "event")
 ENCODING_FIELDS = ("range", "resolution", "raw_bits", "offset", "invalid")
 
 # Raw-unit tolerance when checking that a float lies on the resolution grid: float division
@@ -58,6 +58,7 @@ class Signal:
     invalid: float | None
     dynamic: bool
     description: str | None = None
+    event: bool = False  # booleans only: a rising edge sends an event message (spec section 5)
 
     @property
     def is_number(self) -> bool:
@@ -89,6 +90,11 @@ class Catalogue:
     @property
     def names(self) -> tuple[str, ...]:
         return tuple(signal.name for signal in self.signals)
+
+    @property
+    def event_names(self) -> tuple[str, ...]:
+        """Signals whose rising edge sends an event message, in catalogue order."""
+        return tuple(signal.name for signal in self.signals if signal.event)
 
 
 @cache
@@ -124,6 +130,11 @@ def _parse_signal(entry: dict[str, Any], ecu_ids: set[str]) -> Signal:
         raise CatalogueError(f"{name}: unknown fields {unknown}")
     if "description" in entry and not isinstance(entry["description"], str):
         raise CatalogueError(f"{name}: description must be text")
+    if "event" in entry:
+        if not isinstance(entry["event"], bool):
+            raise CatalogueError(f"{name}: event must be true or false")
+        if entry["type"] != "boolean":
+            raise CatalogueError(f"{name}: only booleans send event messages")
     if entry["ecu"] not in ecu_ids:
         raise CatalogueError(f"{name}: unknown ECU {entry['ecu']!r}")
     if entry["type"] == "boolean":
@@ -156,6 +167,7 @@ def _parse_signal(entry: dict[str, Any], ecu_ids: set[str]) -> Signal:
         invalid=entry["invalid"],
         dynamic=entry["dynamic"],
         description=entry.get("description"),
+        event=entry.get("event", False),
     )
 
 
