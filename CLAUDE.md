@@ -102,8 +102,8 @@ line.
 | --- | --- | --- |
 | `feat` | New behaviour | simulator, pipeline, agent, rag, ui |
 | `fix` | Bug fix | same as feat |
-| `infra` | Terraform, Docker, Compose | kinesis, lambda, dynamodb, iot, compose |
-| `test` | Tests only | unit, integration, eval |
+| `infra` | Terraform, Docker, Compose | kinesis, lambda, dynamodb, iot, compose, image |
+| `test` | Tests only | unit, integration, slow, eval |
 | `docs` | Documentation, ADRs | readme, adr, setup, cost, requirements |
 | `ci` | GitHub Actions, hooks | ci, pre-commit |
 | `refactor`, `chore` | Restructuring, maintenance | — |
