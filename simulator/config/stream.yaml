@@ -1,0 +1,28 @@
+# Telemetry stream: delivery defects injected by the transport (FR-17, spec section 5).
+#
+# Each message of a vehicle takes three uniform draws from the vehicle's TRANSPORT stream, in the
+# order gap, duplicate, reorder, whatever the rates (transport.py): changing one rate never moves
+# another rate's decisions. The sequence number is assigned before the defects, so a dropped
+# message leaves a gap in the counter. All rates are 0 by default: the normal stream is
+# delivered complete and in order. Tests build the transport with their own rates; a run with
+# defects sets them here.
+
+transport:
+  gap_rate:
+    value: 0
+    unit: "-"
+    rationale: >-
+      Probability that a message is lost in transit (e.g. a tunnel). Its sequence number is
+      consumed, so the gap is detectable from the counter. 0 by default.
+  duplicate_rate:
+    value: 0
+    unit: "-"
+    rationale: >-
+      Probability that a delivered message is delivered twice in a row, with the same sequence
+      number and the same record (an at-least-once retry). 0 by default.
+  reorder_rate:
+    value: 0
+    unit: "-"
+    rationale: >-
+      Probability that a delivered message is held back and delivered right after the vehicle's
+      next delivered message, or at the end of the trip if none follows. 0 by default.

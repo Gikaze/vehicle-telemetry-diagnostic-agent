@@ -1,8 +1,9 @@
-"""Layouts and semantic checks of the vehicle model, sensor and plausibility configuration files.
+"""Layouts and semantic checks of the vehicle model, sensor, plausibility and stream configuration
+files.
 
 The parameter sets below are the complete list of constants the vehicle model, the brake ECU logic,
-the sensor layer and the invariant checks may use; a constant used in code must appear here and in
-the matching YAML file with its rationale.
+the sensor layer, the invariant checks and the telemetry transport may use; a constant used in code
+must appear here and in the matching YAML file with its rationale.
 """
 
 from functools import cache
@@ -148,6 +149,10 @@ PLAUSIBILITY_LAYOUT = Layout(
     ),
 )
 
+# Delivery defects injected by the transport (FR-17), as probabilities per message.
+TRANSPORT_RATES = ("gap_rate", "duplicate_rate", "reorder_rate")
+STREAM_LAYOUT = Layout(structural={}, parameters=frozenset(TRANSPORT_RATES))
+
 
 @cache
 def van_model() -> Config:
@@ -163,6 +168,11 @@ def sensors() -> Config:
 @cache
 def plausibility() -> Config:
     return load_plausibility()
+
+
+@cache
+def stream_config() -> Config:
+    return load_stream_config()
 
 
 def load_van_model(path: Path | None = None) -> Config:
@@ -187,6 +197,15 @@ def load_plausibility(path: Path | None = None) -> Config:
     config = load_config(path or config_path("plausibility.yaml"), PLAUSIBILITY_LAYOUT)
     if not config.value("disc_front_rear_ratio_min") < config.value("disc_front_rear_ratio_max"):
         raise ConfigError("plausibility.yaml: disc_front_rear_ratio_min must be below the maximum")
+    return config
+
+
+def load_stream_config(path: Path | None = None) -> Config:
+    """stream.yaml; every transport rate a probability in [0, 1]."""
+    config = load_config(path or config_path("stream.yaml"), STREAM_LAYOUT)
+    for name in TRANSPORT_RATES:
+        if not 0 <= config.value(name) <= 1:
+            raise ConfigError(f"stream.yaml: {name} must lie between 0 and 1")
     return config
 
 

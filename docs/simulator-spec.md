@@ -141,6 +141,15 @@ emitted (measured) samples:
 out-of-order delivery. The pipeline must ingest idempotently: a duplicate never creates a second measurement,
 and a gap is detectable from the sequence counter.
 
+Each vehicle has one sequence counter per run, from 0, shared by all message types
+(`simulator/src/simulator/transport.py`). `seq` is assigned before any defect, so a lost message leaves a gap.
+Each message then takes three uniform draws from the vehicle's `TRANSPORT` stream, always in the order gap,
+duplicate, reorder, so changing one rate never moves another rate's decisions; the rates are in
+`simulator/config/stream.yaml`, all 0 by default. A lost message is not delivered; a duplicate is delivered twice
+in a row with the same `seq`; a reordered message is held, one at a time per vehicle, and delivered right after
+the vehicle's next delivered message, or when its trip's last record arrives if none is delivered before. A
+vehicle's defects depend only on the root seed, its ID and its own messages.
+
 ## 6. Fault models (FR-02)
 
 Faults are overlays on the normal model, activated by scenario files in `simulator/scenarios/` with a start time,
