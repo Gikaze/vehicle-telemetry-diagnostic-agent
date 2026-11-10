@@ -2,15 +2,17 @@
 (spec section 2).
 
     FleetSample -> Aggregator -> Record (periodic or event) -> Transport -> Sequenced
+        -> Serialiser -> Payload
 
-Time is the integer fleet step throughout. The later stages (serialisation, publishers) attach
-here.
+Time is the integer fleet step throughout; the serialiser's clock turns steps into simulated
+time stamps. The publishers attach here.
 """
 
 from collections.abc import Iterator
 
 from simulator.aggregator import Aggregator, Record
 from simulator.fleet_state import FleetSimulation
+from simulator.serialise import Payload, Serialiser
 from simulator.transport import Sequenced, Transport, TransportRates
 
 
@@ -27,3 +29,11 @@ def messages(sim: FleetSimulation, days: int, rates: TransportRates) -> Iterator
     transport = Transport(sim.root_seed, sim.vehicle_ids, rates)
     for record in records(sim, days):
         yield from transport.send([record])
+
+
+def payloads(
+    sim: FleetSimulation, days: int, rates: TransportRates, serialiser: Serialiser
+) -> Iterator[Payload]:
+    """The delivered messages of `days` days of `sim` as JSON bytes, in delivery order."""
+    for message in messages(sim, days, rates):
+        yield serialiser.encode(message)

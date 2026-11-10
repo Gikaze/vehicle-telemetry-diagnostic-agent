@@ -147,6 +147,15 @@ window that closes at that step, which counts the same edges. No event is sent i
 event, `window_start` is the time of the sample where the edge is seen and `window_s` is 0.1, the physics step
 that sample describes (section 4).
 
+**Time and serialisation.** Simulated time counts fleet steps from midnight (UTC) of the start date in
+`simulator/config/stream.yaml`; a step becomes a time stamp in whole milliseconds (`step × 100`), ISO 8601
+UTC such as `2026-01-05T06:00:37.000Z`, never through float seconds (`simulator/src/simulator/clock.py`). A
+message is one compact JSON object (`simulator/src/simulator/serialise.py`): envelope keys in the order above,
+then `signals` (in catalogue order; `mean`, `min`, `max`, `last` or `last`, `count`) or `trigger`; numbers as
+the shortest decimal that reads back to the same float, `window_s` from the whole number of steps (0.3, not
+0.30000000000000004); no NaN. The same seed gives the same bytes on the same machine and numpy build; the
+partition key of a message is its vehicle ID.
+
 **Delivery realism.** The transport layer injects, at configurable rates: gaps (e.g. tunnels), duplicates and
 out-of-order delivery. The pipeline must ingest idempotently: a duplicate never creates a second measurement,
 and a gap is detectable from the sequence counter.

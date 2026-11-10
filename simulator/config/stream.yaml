@@ -1,4 +1,5 @@
-# Telemetry stream: delivery defects injected by the transport (FR-17, spec section 5).
+# Telemetry stream: the simulated start date, and the delivery defects injected by the transport
+# (FR-17, spec section 5).
 #
 # Each message of a vehicle takes three uniform draws from the vehicle's TRANSPORT stream, in the
 # order gap, duplicate, reorder, whatever the rates (transport.py): changing one rate never moves
@@ -6,6 +7,11 @@
 # message leaves a gap in the counter. All rates are 0 by default: the normal stream is
 # delivered complete and in order. Tests build the transport with their own rates; a run with
 # defects sets them here.
+
+# Simulated date of fleet step 0 (midnight UTC), YYYY-MM-DD, quoted so YAML keeps it as text.
+# Message time stamps count from it in whole milliseconds (clock.py). The duty cycle has no
+# weekends or holidays, so the date only labels the days; a Monday is chosen for readability.
+start_date: "2026-01-05"
 
 transport:
   gap_rate:

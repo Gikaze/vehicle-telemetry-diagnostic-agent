@@ -6,6 +6,8 @@ the sensor layer, the invariant checks and the telemetry transport may use; a co
 must appear here and in the matching YAML file with its rationale.
 """
 
+import datetime
+import re
 from functools import cache
 from itertools import pairwise
 from pathlib import Path
@@ -149,9 +151,10 @@ PLAUSIBILITY_LAYOUT = Layout(
     ),
 )
 
-# Delivery defects injected by the transport (FR-17), as probabilities per message.
+# Delivery defects injected by the transport (FR-17), as probabilities per message; the simulated
+# start date (structure: an ISO date as text).
 TRANSPORT_RATES = ("gap_rate", "duplicate_rate", "reorder_rate")
-STREAM_LAYOUT = Layout(structural={}, parameters=frozenset(TRANSPORT_RATES))
+STREAM_LAYOUT = Layout(structural={("start_date",): str}, parameters=frozenset(TRANSPORT_RATES))
 
 
 @cache
@@ -201,12 +204,24 @@ def load_plausibility(path: Path | None = None) -> Config:
 
 
 def load_stream_config(path: Path | None = None) -> Config:
-    """stream.yaml; every transport rate a probability in [0, 1]."""
+    """stream.yaml; every transport rate a probability in [0, 1]; the start date YYYY-MM-DD."""
     config = load_config(path or config_path("stream.yaml"), STREAM_LAYOUT)
     for name in TRANSPORT_RATES:
         if not 0 <= config.value(name) <= 1:
             raise ConfigError(f"stream.yaml: {name} must lie between 0 and 1")
+    start_date(config)
     return config
+
+
+def start_date(config: Config) -> datetime.date:
+    """The simulated start date of stream.yaml, a YYYY-MM-DD date."""
+    text = config.structure[("start_date",)]
+    if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", text):
+        raise ConfigError(f"stream.yaml: start_date must be YYYY-MM-DD, got {text!r}")
+    try:
+        return datetime.date.fromisoformat(text)
+    except ValueError as error:
+        raise ConfigError(f"stream.yaml: start_date {text!r} is not a date") from error
 
 
 def _check_noise(config: Config) -> None:
