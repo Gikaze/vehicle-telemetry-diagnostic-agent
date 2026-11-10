@@ -119,6 +119,21 @@ Every 10 seconds the simulator emits one **periodic message** per vehicle with, 
 and `last` (counters such as ABS activations for brief events). Urgent changes — an ESC intervention, a new
 DTC — are sent immediately as **event messages**.
 
+Windows follow each trip (`simulator/src/simulator/aggregator.py`): the first starts at the trip's first step,
+each later one 10 s (100 steps) after the previous one, and the last window of a trip holds the remaining 0.1
+to 10 s, its length given by `window_s`. Nothing is sent while a vehicle is parked. Statistics are taken on the
+emitted (measured) samples:
+
+- numeric signals: `min`, `max` and `last` are samples of the window; `mean` is the mean of the samples' grid
+  indices (`(value − offset) / resolution`) rounded half to even, so every statistic lies on the catalogue grid
+  and within its range. A sample at the signal's invalid value stays out of `mean`, `min` and `max`; `last` is
+  the last sample as read, invalid or not; a window without a valid sample reports the invalid value for all
+  four. No v1.0 sample is invalid (readings saturate at the range bounds); the rule is in place for sensor
+  faults;
+- boolean signals: `last`, and `count`, the rising edges (false to true) between consecutive samples of the
+  trip; the value before a window's first sample is the previous window's last one, and a trip's first sample
+  is never an edge.
+
 **Message envelope.** Every message carries `vehicle_id`, `seq` (monotonic sequence counter), `window_start`,
 `window_s` and `schema_version`, similar in spirit to end-to-end protection counters on vehicle networks.
 

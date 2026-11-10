@@ -22,3 +22,7 @@ PHYSICS_DT = 0.1
 
 # Seconds per day, by definition of the units (no leap seconds in simulated time).
 SECONDS_PER_DAY = 86_400
+
+# Aggregation window of the periodic messages, s: fixed by FR-01 and docs/simulator-spec.md,
+# section 5. An integer, so the schema renders it as 10 and window lengths divide exactly.
+AGGREGATION_WINDOW = 10

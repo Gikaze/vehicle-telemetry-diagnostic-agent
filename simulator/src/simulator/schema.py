@@ -12,13 +12,14 @@ from pathlib import Path
 from typing import Any
 
 from simulator.catalogue import Catalogue, Signal, load_catalogue
+from simulator.constants import AGGREGATION_WINDOW
 from simulator.paths import schema_path
 
 DRAFT = "https://json-schema.org/draft/2020-12/schema"
 VEHICLE_ID_PATTERN = r"^[A-Z][A-Z0-9]*-[0-9]{3,}$"
 # ISO 8601 UTC with milliseconds, e.g. 2026-01-05T07:30:00.000Z (simulated time).
 TIMESTAMP_PATTERN = r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$"
-WINDOW_S_MAX = 10
+WINDOW_S_MAX = AGGREGATION_WINDOW
 
 BOOLEAN_STATS = {
     "type": "object",
