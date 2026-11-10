@@ -64,7 +64,8 @@ class PeriodicRecord:
 
     @property
     def window_s(self) -> float:
-        """Window length, s, from the whole number of steps (3.7, not 37 * 0.1)."""
+        """Window length, s, from the whole number of steps: 0.3, where 3 * 0.1 would give
+        0.30000000000000004."""
         return self.steps / STEPS_PER_SECOND
 
 

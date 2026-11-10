@@ -345,6 +345,11 @@ def test_invalid_samples_stay_out_of_mean_min_and_max() -> None:
 def test_window_s_is_exact_for_a_short_window() -> None:
     (record,) = feed_series("abs_active", [False] * 37)
     assert record.steps == 37 and repr(record.window_s) == "3.7"
+    # Every length is its decimal, whatever the float product would give (3 * 0.1 prints
+    # 0.30000000000000004).
+    for steps in range(1, 101):
+        window = PeriodicRecord("VAN-001", 0, steps, True, (), ())
+        assert repr(window.window_s) == f"{steps // 10}.{steps % 10}", steps
 
 
 def test_a_parked_slot_is_never_read() -> None:
