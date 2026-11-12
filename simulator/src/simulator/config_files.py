@@ -12,7 +12,7 @@ from functools import cache
 from itertools import pairwise
 from pathlib import Path
 
-from simulator.constants import PHYSICS_DT
+from simulator.constants import AGGREGATION_WINDOW, PHYSICS_DT
 from simulator.params import Config, ConfigError, Layout, config_path, load_config
 
 DRIVE_AXLES = ("front", "rear")
@@ -200,6 +200,12 @@ def load_plausibility(path: Path | None = None) -> Config:
     config = load_config(path or config_path("plausibility.yaml"), PLAUSIBILITY_LAYOUT)
     if not config.value("disc_front_rear_ratio_min") < config.value("disc_front_rear_ratio_max"):
         raise ConfigError("plausibility.yaml: disc_front_rear_ratio_min must be below the maximum")
+    windows = config.si("disc_ratio_window") / AGGREGATION_WINDOW
+    if not (windows >= 1 and windows == round(windows)):
+        raise ConfigError(
+            "plausibility.yaml: disc_ratio_window must be a whole number of "
+            f"{AGGREGATION_WINDOW} s telemetry windows (the stream check averages whole windows)"
+        )
     return config
 
 

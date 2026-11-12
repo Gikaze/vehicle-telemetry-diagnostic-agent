@@ -264,7 +264,12 @@ Confirmation thresholds are simulator parameters, not values taken from any real
      front/rear ratio of the axle mean rises above ambient, averaged over a window once the rear rise exceeds a
      threshold, stays within its bounds (`plausibility.yaml`; section 8).
 3. **Normal-stream test:** 100 vehicles × 24 simulated hours produce **zero** anomalies (false-positive check,
-   shared with FR-06).
+   shared with FR-06). Until the FR-06 rules exist (M3), an anomaly is what the provisional stream check
+   (`simulator/src/simulator/plausibility.py`) reports on the parsed messages: a statistic outside its catalogue
+   range or grid, or at its invalid value; more rising edges than half a window's samples; a left/right disc
+   spread, a front/rear disc ratio (over `disc_ratio_window` in whole 10 s windows), a coolant step between
+   consecutive windows or a coolant maximum beyond the `plausibility.yaml` bounds, each widened by the
+   measurement error of the emitted statistic. The check keeps a bounded state per vehicle, never a whole trip.
 4. **Scenario tests:** each fault model produces its expected signature, and only that one.
 5. **Expert review:** a plot of one simulated vehicle-day (speed, accelerations, temperatures, pressures) is
    published in `docs/assets/` and reviewed by a domain expert before v1.0. `make vehicle-day` runs one fleet
@@ -365,10 +370,15 @@ Confirmation thresholds are simulator parameters, not values taken from any real
   ambient stays in [1.69, 1.84] over 60 s windows once the rear rise exceeds 20 K (`plausibility.yaml`; invariant
   tests on the true state in `tests/unit/simulator/test_thermal.py`). Both follow from the model: the same cooling
   law on all four discs, a fixed brake split and per-wheel heat capacities within ±2 %. Real vans vary more
-  (different front and rear cooling, caliper drag). On emitted values the ratio bounds widen with the resolution
-  of the disc estimates (1 K) and of the ambient (0.5 K), both noise-free: to [1.59, 1.95] at the 20 K threshold
-  (`disc_ratio_min_rear_rise` rationale). No code computes this widening yet; the M3 rules, which work on emitted
-  data, will derive it from the catalogue resolutions.
+  (different front and rear cooling, caliper drag). On emitted samples the ratio bounds widen with the
+  resolution of the disc estimates (1 K) and of the ambient (0.5 K), both noise-free: to [1.59, 1.95] at the 20 K
+  threshold (`disc_ratio_min_rear_rise` rationale). The messages carry 10 s window means, whose disc error is one
+  resolution (half from the samples, half from rounding the mean); the provisional stream check
+  (`simulator/src/simulator/plausibility.py`) computes the widening from the catalogue resolutions on those means,
+  with d = 1.25 K the error of an axle mean rise (1 K per disc mean, 0.25 K on the day's constant ambient). The
+  bounds hold once the true rear rise exceeds 20 K, so the check evaluates the ratio only once the measured rise
+  minus d does, above 21.25 K, where the widened bounds are [1.53, 2.01]; they narrow as the rise grows. The M3
+  rules will derive their own.
 - `eps_temperature` reads the day's ambient (no EPS thermal model in v1.0); `eps_derating_active`,
   `brake_pad_wear_warning` and `brake_fluid_level_warning` are false and `sas_calibrated` true
   unless a scenario sets them.

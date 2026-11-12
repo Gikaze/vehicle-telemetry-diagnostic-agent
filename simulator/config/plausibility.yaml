@@ -43,7 +43,9 @@ disc_temperature:
       quantisation error (0.5 K per disc estimate, 0.25 K on ambient) moves the ratio by at most
       (r * R + 0.75) / (R - 0.75) upwards and (r * R - 0.75) / (R + 0.75) downwards; at R = 20 K
       the bounds [1.69, 1.84] widen to [1.59, 1.95]. The widening is computed in code from the
-      catalogue resolutions, not stored here.
+      catalogue resolutions, not stored here. The stream check (plausibility.py) works on 10 s
+      window means (error d = 1.25 K on an axle mean rise) and evaluates the ratio only once the
+      measured rear rise minus d exceeds this value, i.e. above 21.25 K: [1.53, 2.01] there.
 
 coolant:
   coolant_rate_max:
