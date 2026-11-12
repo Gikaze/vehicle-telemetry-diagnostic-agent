@@ -169,6 +169,15 @@ in a row with the same `seq`; a reordered message is held, one at a time per veh
 the vehicle's next delivered message, or when its trip's last record arrives if none is delivered before. A
 vehicle's defects depend only on the root seed, its ID and its own messages.
 
+**Publishing.** The delivered messages go to standard output or a file as JSON Lines, or to a Kinesis stream
+(`simulator/src/simulator/publishers.py`). The Kinesis publisher only targets a local emulator: its endpoint,
+`AWS_ENDPOINT_URL`, must be `http(s)://localhost` or `127.0.0.1`, and its credentials come from
+`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` only, never from a profile or a `~/.aws` file; both checks run
+before any client is created. Requests stay within the PutRecords limits (500 records, 10 MiB including
+partition keys); records the service fails are sent again, up to 5 attempts, then the run fails. PutRecords
+does not keep order, and a retried record lands after records sent later: a consumer must order a vehicle's
+messages by `seq`.
+
 ## 6. Fault models (FR-02)
 
 Faults are overlays on the normal model, activated by scenario files in `simulator/scenarios/` with a start time,
