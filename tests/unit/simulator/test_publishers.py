@@ -88,6 +88,37 @@ def test_the_file_publisher_writes_json_lines(tmp_path: Path, payloads) -> None:
     assert path.read_bytes() == b"".join(p.data + b"\n" for p in payloads)
 
 
+class Flushes(io.BytesIO):
+    def __init__(self) -> None:
+        super().__init__()
+        self.flushes = 0
+
+    def flush(self) -> None:
+        self.flushes += 1
+        super().flush()
+
+
+@pytest.mark.parametrize(("flush", "per_batch"), [(True, 1), (False, 0)])
+def test_the_stream_publisher_flushes_each_batch_when_asked(payloads, flush, per_batch) -> None:
+    out = Flushes()
+    publisher = StreamPublisher(out, flush)
+    for i in range(3):
+        publisher.publish(payloads[i : i + 1])
+        assert out.flushes == per_batch * (i + 1)
+    publisher.close()
+    assert out.flushes == 3 * per_batch + 1
+
+
+def test_the_file_publisher_flushes_each_batch_when_asked(tmp_path: Path, payloads) -> None:
+    """One message is smaller than the file buffer: on disk at once only if flushed."""
+    path = tmp_path / "out.jsonl"
+    publisher = FilePublisher(path, flush=True)
+    for i in range(3):
+        publisher.publish(payloads[i : i + 1])
+        assert path.read_bytes() == b"".join(p.data + b"\n" for p in payloads[: i + 1])
+    publisher.close()
+
+
 def test_close_writes_the_last_buffered_message(tmp_path: Path, payloads) -> None:
     """One message is smaller than the file buffer: it is on disk only once the file is closed."""
     path = tmp_path / "out.jsonl"

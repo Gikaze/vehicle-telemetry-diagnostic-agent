@@ -56,6 +56,7 @@ make test       # unit tests with coverage
 make test-int   # integration tests against LocalStack (requires `lstk` running)
 make schema     # regenerate the telemetry JSON Schema from simulator/catalogue.yaml
 make vehicle-day  # run and check one fleet day (10 vans, seed 42), plot docs/assets/m1-vehicle-day.png
+make stream     # run the telemetry stream (vtda-simulator); settings from SIM_* variables or ARGS="..."
 make up         # start LocalStack and local services
 make down       # stop everything
 ```

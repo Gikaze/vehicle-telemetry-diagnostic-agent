@@ -213,15 +213,23 @@ def load_stream_config(path: Path | None = None) -> Config:
     return config
 
 
-def start_date(config: Config) -> datetime.date:
-    """The simulated start date of stream.yaml, a YYYY-MM-DD date."""
-    text = config.structure[("start_date",)]
+def parse_date(text: str) -> datetime.date:
+    """A YYYY-MM-DD calendar date (the extended ISO 8601 form only: date.fromisoformat alone also
+    takes 20260105); ValueError otherwise. Shared by stream.yaml and the command line."""
     if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", text):
-        raise ConfigError(f"stream.yaml: start_date must be YYYY-MM-DD, got {text!r}")
+        raise ValueError(f"must be YYYY-MM-DD, got {text!r}")
     try:
         return datetime.date.fromisoformat(text)
     except ValueError as error:
-        raise ConfigError(f"stream.yaml: start_date {text!r} is not a date") from error
+        raise ValueError(f"{text!r} is not a date") from error
+
+
+def start_date(config: Config) -> datetime.date:
+    """The simulated start date of stream.yaml, a YYYY-MM-DD date."""
+    try:
+        return parse_date(config.structure[("start_date",)])
+    except ValueError as error:
+        raise ConfigError(f"stream.yaml: start_date {error}") from error
 
 
 def _check_noise(config: Config) -> None:

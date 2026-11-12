@@ -178,6 +178,16 @@ partition keys); records the service fails are sent again, up to 5 attempts, the
 does not keep order, and a retried record lands after records sent later: a consumer must order a vehicle's
 messages by `seq`.
 
+**Running the stream.** `vtda-simulator` (`simulator/src/simulator/cli.py`, `make stream`) takes every setting
+as an argument or an environment variable (`.env.example`), the argument winning: seed, fleet size, days, target
+(`stdout`, `file` or `kinesis`), output file, stream name, mode, start date (default: `start_date` of
+`stream.yaml`) and a message limit. The transport rates are read from `stream.yaml` only. In `batch` mode the
+messages are published as fast as they are made; in `paced` mode the messages of a fleet step are published
+when the wall time since the first published step reaches the simulated time between them, parked periods
+included, and standard output or the file is flushed after each step's messages. The exit code is 0 for a
+complete run, 2 for a refused setting or configuration (nothing is published) and 1 for a publication that
+fails during the run.
+
 ## 6. Fault models (FR-02)
 
 Faults are overlays on the normal model, activated by scenario files in `simulator/scenarios/` with a start time,

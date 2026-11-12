@@ -63,26 +63,35 @@ class PublishFailed(RuntimeError):
 
 
 class StreamPublisher:
-    """JSON Lines on a binary stream (standard output by default); the stream stays open."""
+    """JSON Lines on a binary stream (standard output by default); the stream stays open.
+    `flush`: flush after each batch, so a reader of a pipe sees each batch when it is published
+    (paced mode), not in buffer-sized bursts."""
 
-    def __init__(self, stream: BinaryIO | None = None):
+    def __init__(self, stream: BinaryIO | None = None, flush: bool = False):
         self.stream = stream if stream is not None else sys.stdout.buffer
+        self.flush = flush
 
     def publish(self, batch: Sequence[Payload]) -> None:
         self.stream.write(b"".join(payload.data + b"\n" for payload in batch))
+        if self.flush:
+            self.stream.flush()
 
     def close(self) -> None:
         self.stream.flush()
 
 
 class FilePublisher:
-    """JSON Lines in a file, created or overwritten."""
+    """JSON Lines in a file, created or overwritten. `flush`: flush after each batch, so a reader
+    tailing the file sees each batch when it is published (paced mode)."""
 
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, flush: bool = False):
         self.file = path.open("wb")
+        self.flush = flush
 
     def publish(self, batch: Sequence[Payload]) -> None:
         self.file.write(b"".join(payload.data + b"\n" for payload in batch))
+        if self.flush:
+            self.file.flush()
 
     def close(self) -> None:
         self.file.close()

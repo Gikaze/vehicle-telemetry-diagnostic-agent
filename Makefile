@@ -8,7 +8,7 @@ COMPOSE_FILE := compose.yaml
 # without writing the lstk configuration. Update the tag deliberately, never to `latest`.
 LOCALSTACK_IMAGE := localstack/localstack-pro:2026.9.1
 
-.PHONY: help setup lint test test-int up down schema vehicle-day
+.PHONY: help setup lint test test-int up down schema vehicle-day stream
 
 help: ## Show available targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -26,6 +26,9 @@ schema: ## Regenerate the telemetry JSON Schema from simulator/catalogue.yaml
 vehicle-day: ## Run and check one fleet day (10 vans, seed 42); plot VAN-001's day to docs/assets/
 	uv run python simulator/tools/vehicle_day.py --seed 42 --vehicles 10 --vehicle VAN-001 \
 		--out docs/assets/m1-vehicle-day.png
+
+stream: ## Run the telemetry stream; settings from SIM_* variables or ARGS="--target file --out x.jsonl"
+	@uv run vtda-simulator $(ARGS)
 
 test: ## Run unit tests with coverage
 	uv run pytest tests/unit --cov
