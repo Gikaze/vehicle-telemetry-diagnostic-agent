@@ -58,6 +58,39 @@ jobs:
       - name: Run unit tests with coverage
         run: make test
 
+  fleet-run:
+    name: Simulator fleet run
+    # The weekly full day is the Simulator 24 h workflow; the scheduled CI run skips the cut one.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      # Day 0 of the 100-van fleet run stops at this simulated time (HH:MM): the per-PR form of
+      # the 24 h run (make test-24h). If the test step takes over 7 min, move it to "08:30".
+      FLEET_RUN_UNTIL: "09:00"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Run 100 vans until FLEET_RUN_UNTIL, every message validated and checked
+        run: make test-24h UNTIL="$FLEET_RUN_UNTIL" SUMMARY=fleet-run-summary.json
+      - name: Add the run summary to the job summary
+        if: always()
+        run: |
+          if [ -s fleet-run-summary.json ]; then
+            {
+              echo "### Simulator fleet run: 100 vans, day 0 until $FLEET_RUN_UNTIL"
+              echo '```json'
+              cat fleet-run-summary.json
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### Simulator fleet run: no summary (the run failed or did not run)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   gitleaks:
     name: Secret scan
     runs-on: ubuntu-24.04
