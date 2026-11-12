@@ -270,6 +270,9 @@ Confirmation thresholds are simulator parameters, not values taken from any real
    spread, a front/rear disc ratio (over `disc_ratio_window` in whole 10 s windows), a coolant step between
    consecutive windows or a coolant maximum beyond the `plausibility.yaml` bounds, each widened by the
    measurement error of the emitted statistic. The check keeps a bounded state per vehicle, never a whole trip.
+   `make test-24h` runs it (`tests/slow/test_fleet_run.py`, seed 42): every delivered message is validated
+   against the committed schema and checked, and the test prints a summary (commit, counts, stream SHA-256,
+   stage times, peak memory); `UNTIL=HH:MM` stops day 0 at that time, `VEHICLES=n` changes the fleet size.
 4. **Scenario tests:** each fault model produces its expected signature, and only that one.
 5. **Expert review:** a plot of one simulated vehicle-day (speed, accelerations, temperatures, pressures) is
    published in `docs/assets/` and reviewed by a domain expert before v1.0. `make vehicle-day` runs one fleet
