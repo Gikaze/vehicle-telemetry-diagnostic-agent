@@ -8,13 +8,18 @@ COMPOSE_FILE := compose.yaml
 # without writing the lstk configuration. Update the tag deliberately, never to `latest`.
 LOCALSTACK_IMAGE := localstack/localstack-pro:2026.9.1
 
-.PHONY: help setup lint test test-int test-24h up down schema vehicle-day stream
+.PHONY: help setup lint test test-int test-24h up down schema vehicle-day stream image
 
 # make test-24h: fleet size and cut of the fleet run (UNTIL=HH:MM stops day 0 there; empty: 24 h),
 # and the file the run's JSON summary is written to (empty: a temporary file, removed after).
 VEHICLES ?= 100
 UNTIL ?=
 SUMMARY ?=
+
+# make image: the files the simulator image is built from (the .dockerignore allowlist, the
+# Dockerfile and the allowlist itself), which must be committed so the revision label is true.
+IMAGE_INPUTS := simulator.Dockerfile .dockerignore pyproject.toml uv.lock simulator/pyproject.toml \
+	simulator/src simulator/catalogue.yaml simulator/config simulator/schema
 
 help: ## Show available targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -52,6 +57,16 @@ test-24h: ## Fleet run (100 vans, 24 h; UNTIL=09:00 cuts it): every message vali
 	fi; \
 	if [ -n "$$temporary" ]; then rm -f "$$summary"; fi; \
 	exit $$status
+
+image: ## Build the simulator image vtda-simulator:<package version> from committed inputs
+	@if [ -n "$$(git status --porcelain -- $(IMAGE_INPUTS))" ]; then \
+		echo "make image: uncommitted changes in the image inputs, commit first:" >&2; \
+		git status --short -- $(IMAGE_INPUTS) >&2; \
+		exit 1; \
+	fi; \
+	version=$$(uv version --package vtda-simulator --short) && \
+	docker build -f simulator.Dockerfile -t "vtda-simulator:$$version" \
+		--build-arg VERSION="$$version" --build-arg REVISION="$$(git rev-parse HEAD)" .
 
 test-int: ## Run integration tests against LocalStack (requires lstk running)
 	@lstk status --non-interactive >/dev/null || { echo "LocalStack is not running: run 'make up' first"; exit 1; }

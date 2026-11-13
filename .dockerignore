@@ -1,0 +1,19 @@
+# Allowlist for the simulator image (simulator.Dockerfile): everything is excluded, then only the
+# files the build reads are let back in, so .env, .git, .venv, scratchpad/, caches, Terraform
+# state and any file added later never reach the builder. The last matching rule wins.
+*
+
+# The uv workspace and its lock (both sync layers).
+!pyproject.toml
+!uv.lock
+!simulator/pyproject.toml
+# The simulator package (second sync layer).
+!simulator/src/
+# The data files under SIM_HOME.
+!simulator/catalogue.yaml
+!simulator/config/
+!simulator/schema/
+
+# Host bytecode inside the exceptions above (another interpreter's, and stale): after them.
+**/__pycache__
+**/*.pyc
