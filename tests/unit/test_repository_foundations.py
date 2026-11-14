@@ -6,8 +6,10 @@ import tomllib
 from pathlib import Path
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
+WORKFLOWS = (ROOT / ".github/workflows/ci.yml", ROOT / ".github/workflows/simulator-24h.yml")
 
 # Values allowed in .env.example: placeholders and local development endpoints only.
 ALLOWED_ENV_VALUE = re.compile(
@@ -62,6 +64,48 @@ def test_simulator_image_bases_are_pinned() -> None:
         repositories.add(match[1])
     assert len(references) == 3
     assert repositories == {"ghcr.io/astral-sh/uv", "debian", "gcr.io/distroless/cc-debian13"}
+
+
+def test_uv_version_agrees_everywhere() -> None:
+    """NFR-07: one uv version in both workflows, the install command of docs/SETUP.md and the uv
+    image of simulator.Dockerfile; every setup-uv step takes it from env.UV_VERSION."""
+    versions = {}
+    for path in WORKFLOWS:
+        workflow = yaml.safe_load(path.read_text())
+        versions[path.name] = workflow["env"]["UV_VERSION"]
+        for job in workflow["jobs"].values():
+            for step in job.get("steps", []):
+                if step.get("uses", "").startswith("astral-sh/setup-uv@"):
+                    version = step.get("with", {}).get("version")
+                    assert version == "${{ env.UV_VERSION }}", f"{path.name}: setup-uv {version!r}"
+    setup = re.findall(r"astral\.sh/uv/([^/\s]+)/install\.sh", (ROOT / "docs/SETUP.md").read_text())
+    dockerfile = (ROOT / "simulator.Dockerfile").read_text()
+    image = re.findall(r"^FROM ghcr\.io/astral-sh/uv:([^@\s]+)@", dockerfile, re.MULTILINE)
+    assert len(setup) == 1, f"docs/SETUP.md: {setup}"
+    assert len(image) == 1, f"simulator.Dockerfile: {image}"
+    versions["docs/SETUP.md"] = setup[0]
+    versions["simulator.Dockerfile"] = image[0]
+    assert len(set(versions.values())) == 1, f"uv versions differ: {versions}"
+    assert re.fullmatch(r"\d+\.\d+\.\d+", versions["ci.yml"]), versions
+
+
+def test_actions_are_pinned_to_one_commit_everywhere() -> None:
+    """NFR-07: every action in both workflows is pinned to a full commit SHA, the same one wherever
+    it is used."""
+    shas: dict[str, set[str]] = {}
+    used_in: dict[str, set[str]] = {}
+    for path in WORKFLOWS:
+        for reference in re.findall(r"^\s*-?\s*uses:\s*(\S+)", path.read_text(), re.MULTILINE):
+            action, _, ref = reference.partition("@")
+            assert re.fullmatch(r"[0-9a-f]{40}", ref), (
+                f"{path.name}: {reference} is not a commit SHA"
+            )
+            shas.setdefault(action, set()).add(ref)
+            used_in.setdefault(action, set()).add(path.name)
+    for action, refs in shas.items():
+        assert len(refs) == 1, f"{action} is pinned to several commits: {sorted(refs)}"
+    for action in ("actions/checkout", "astral-sh/setup-uv"):
+        assert used_in.get(action) == {path.name for path in WORKFLOWS}, action
 
 
 def test_simulator_image_data_directory_is_root_owned_and_runs_as_nonroot() -> None:

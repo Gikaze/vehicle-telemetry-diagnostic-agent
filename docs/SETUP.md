@@ -27,7 +27,9 @@ In Docker Desktop: **Settings → General → Use the WSL 2 based engine**, then
 ## 3. Tools inside WSL
 
 uv, pre-commit and Terraform are pinned (NFR-07). These versions must stay in sync with the `env` block of
-`.github/workflows/ci.yml`; change both together.
+`.github/workflows/ci.yml`; change both together. The uv version is also in the `env` block of
+`.github/workflows/simulator-24h.yml` and in the uv image tag of `simulator.Dockerfile`: a unit test
+(`tests/unit/test_repository_foundations.py`) fails when the four disagree.
 
 ```bash
 # Base tools
