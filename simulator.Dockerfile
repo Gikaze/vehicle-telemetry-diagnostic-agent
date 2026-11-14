@@ -17,7 +17,18 @@ ENV UV_PYTHON_INSTALL_DIR=/opt/python \
     UV_PROJECT_ENVIRONMENT=/app/.venv \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
-RUN uv python install "${PYTHON_VERSION}"
+# Install the interpreter, then remove pip and ensurepip from it: nothing runs them (uv builds the
+# venv, which has no pip), and pip vendors its own packages, which Trivy reports from pip's SBOM.
+# The paths come from the interpreter's sysconfig, not a hard-coded patch directory, and a path
+# that does not exist fails the build, so a layout change cannot turn this into a silent no-op.
+# Tcl/Tk and idlelib stay.
+RUN uv python install "${PYTHON_VERSION}" \
+ && python="$(uv python find --no-project "${PYTHON_VERSION}")" \
+ && stdlib="$("$python" -c 'import sysconfig; print(sysconfig.get_path("stdlib"))')" \
+ && purelib="$("$python" -c 'import sysconfig; print(sysconfig.get_path("purelib"))')" \
+ && set -- "$purelib"/pip "$purelib"/pip-*.dist-info "$stdlib"/ensurepip "$(dirname "$python")"/pip* \
+ && for path in "$@"; do [ -e "$path" ] || { echo "not found: $path" >&2; exit 1; }; done \
+ && rm -r -- "$@"
 WORKDIR /src
 # Layer 1: the runtime dependencies only, from the lock. The workspace pyproject.toml files come
 # with it: uv needs them to resolve the vtda-simulator member.
