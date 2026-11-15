@@ -66,6 +66,16 @@ def test_simulator_image_bases_are_pinned() -> None:
     assert repositories == {"ghcr.io/astral-sh/uv", "debian", "gcr.io/distroless/cc-debian13"}
 
 
+def test_trivy_image_is_pinned() -> None:
+    """NFR-07: the Trivy image of the Simulator image job has an explicit tag and a digest."""
+    workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
+    reference = workflow["jobs"]["image"]["env"]["TRIVY_IMAGE"]
+    match = re.fullmatch(r"([a-z0-9./-]+):([A-Za-z0-9._-]+)@sha256:[0-9a-f]{64}", reference)
+    assert match, f"{reference} is not pinned as repository:tag@sha256:digest"
+    assert match[2] != "latest", reference
+    assert match[1] == "ghcr.io/aquasecurity/trivy"
+
+
 def test_uv_version_agrees_everywhere() -> None:
     """NFR-07: one uv version in both workflows, the install command of docs/SETUP.md and the uv
     image of simulator.Dockerfile; every setup-uv step takes it from env.UV_VERSION."""
