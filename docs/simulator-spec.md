@@ -142,10 +142,10 @@ a trip's first sample never sends one. Within a step, a vehicle's events come be
 window that closes at that step, which counts the same edges. No event is sent in a normal v1.0 stream (section
 8: ABS, TCS and ESC never intervene); DTC events come with the fault overlay (section 6).
 
-**Message envelope.** Every message carries `vehicle_id`, `seq` (monotonic sequence counter), `window_start`,
-`window_s` and `schema_version`, similar in spirit to end-to-end protection counters on vehicle networks. For an
-event, `window_start` is the time of the sample where the edge is seen and `window_s` is 0.1, the physics step
-that sample describes (section 4).
+**Message envelope.** Every message carries `message_type` (`periodic` or `event`), `schema_version`,
+`vehicle_id`, `seq` (monotonic sequence counter), `window_start` and `window_s`, similar in spirit to end-to-end
+protection counters on vehicle networks. For an event, `window_start` is the time of the sample where the edge
+is seen and `window_s` is 0.1, the physics step that sample describes (section 4).
 
 **Time and serialisation.** Simulated time counts fleet steps from midnight (UTC) of the start date in
 `simulator/config/stream.yaml`; a step becomes a time stamp in whole milliseconds (`step × 100`), ISO 8601
@@ -177,6 +177,12 @@ before any client is created. Requests stay within the PutRecords limits (500 re
 partition keys); records the service fails are sent again, up to 5 attempts, then the run fails. PutRecords
 does not keep order, and a retried record lands after records sent later: a consumer must order a vehicle's
 messages by `seq`.
+
+**Message identity.** `seq` restarts at 0 on every run. Within a run, a message is identified by `vehicle_id`,
+`message_type` and `window_start`, and an event also by `trigger.signal` (several events can share a step).
+Nothing in the envelope tells two runs apart: two runs over the same start date, whatever their seeds, produce
+the same identities. How the M2 pipeline keeps runs apart for idempotent ingestion is left to M2. `seq` orders a
+vehicle's messages and shows gaps within a run.
 
 **Running the stream.** `vtda-simulator` (`simulator/src/simulator/cli.py`, `make stream`) takes every setting
 as an argument or an environment variable (`.env.example`), the argument winning: seed, fleet size, days, target
@@ -287,15 +293,16 @@ Confirmation thresholds are simulator parameters, not values taken from any real
   knowledge; they are listed with their rationale in `simulator/config/` and are not calibrated against any
   real vehicle.
 - **Duty cycle and terrain.** A van-day is a regional delivery round: the shift starts between 06:30 and 07:30
-  and ends between 16:00 and 18:30, with 4 to 6 trips and a lunch break; urban segments end in a delivery stop
-  with probability 0.7. Over the 10 vans of `make vehicle-day` (seed 42; true distance from the day summary in
-  `simulator/src/simulator/fleet_day.py`), a van drives 324.6 to 427.5 km and makes 20 to 37 delivery stops
-  (VAN-001: 415.9 km in 5 trips, 33 delivery stops). The terrain is temperate, low-altitude and hilly: urban
-  grades within ±2 %, rural ±3 %, descents of 7 to 10 % lasting 2 to 5 min; the grade is constant within a segment
-  and steps at segment boundaries. Altitude is not tracked: descents are not balanced by climbs, and the
-  atmospheric pressure stays at 1.013 bar. The ambient temperature is one value per day for the whole fleet (a
-  fleet stream), drawn uniformly between −5 and 30 °C as the daily mean of a temperate lowland year: no diurnal
-  cycle, the uniform draw over-weights the extremes, and one day tests one ambient.
+  and ends between 16:00 and 18:30, in simulated UTC (the clock of section 5), with 4 to 6 trips and a lunch
+  break; urban segments end in a delivery stop with probability 0.7. Over the 10 vans of `make vehicle-day`
+  (seed 42; true distance from the day summary in `simulator/src/simulator/fleet_day.py`), a van drives 324.6
+  to 427.5 km and makes 20 to 37 delivery stops (VAN-001: 415.9 km in 5 trips, 33 delivery stops). The terrain
+  is temperate, low-altitude and hilly: urban grades within ±2 %, rural ±3 %, descents of 7 to 10 % lasting 2 to
+  5 min; the grade is constant within a segment and steps at segment boundaries. Altitude is not tracked:
+  descents are not balanced by climbs, and the atmospheric pressure stays at 1.013 bar. The ambient temperature
+  is one value per day for the whole fleet (a fleet stream), drawn uniformly between −5 and 30 °C as the daily
+  mean of a temperate lowland year: no diurnal cycle, the uniform draw over-weights the extremes, and one day
+  tests one ambient.
 - The single-track model is kinematic and is used at low lateral acceleration only; the simulator does not
   reproduce limit handling. Transient dynamics are reduced: no tyre relaxation lag, no roll, no yaw inertia or
   damping, so the yaw rate and lateral acceleration follow the steering angle within the step. Axle loads are
@@ -310,12 +317,12 @@ Confirmation thresholds are simulator parameters, not values taken from any real
   with the shortest curvature ramp: `curve_transition_time_min` = 2 s (the cap `R · angle / v` is never shorter,
   at least 2.47 s for downhill bends), so `ψ̈ = v / (R · t)` = 0.224 rad/s². The extra terms then reach 0.34 to
   0.44 m/s² on `a_y` on the ramps and −0.30 to −0.40 m/s² on `a_x` in the arc.
-- Sensor noise is Gaussian, white and unbiased, clipped at 3 σ, so every measurement error of a true value inside the
-  catalogue range is at most 3 σ plus half the resolution. There is no offset, drift or filtering (the coolant σ
-  stands for the ECU's filtered reading). A wheel speed sensor reads exactly 0 at standstill. Readings saturate at
-  the range bounds: a released brake (0 bar) reads 0 to 0.6 bar and a released accelerator 0 to 0.6 %, exactly 0
-  in about 60 % of the samples; `brake_pedal_pressed` comes from the brake light switch on the true pressure, not
-  from this reading.
+- Sensor noise is Gaussian, white and unbiased, clipped at 3 σ, so every measurement error of a true value inside
+  the catalogue range is at most 3 σ plus half the resolution. There is no offset, drift or filtering (the
+  coolant σ stands for the ECU's filtered reading). A wheel speed sensor reads exactly 0 at standstill. Readings
+  saturate at the range bounds: a released brake (0 bar) reads 0 to 0.6 bar and a released accelerator 0 to
+  0.6 %, exactly 0 in about 60 % of the samples; `brake_pedal_pressed` comes from the brake light switch on the
+  true pressure, not from this reading.
 - `accel_long` reads the derivative of the speed, `dv/dt`. A real accelerometer on a grade also reads the gravity
   component along the road, `g · sin(atan(grade))` (about 1 m/s² on a 10 % grade); the model leaves it out.
 - Brake pedal at stops: whenever the van is at rest (speed 0 at both ends of a step) outside a delivery stop,
@@ -332,8 +339,8 @@ Confirmation thresholds are simulator parameters, not values taken from any real
   force of `F_hold` (supplied by the parking brake at a delivery, with the pedal released); the pressure still
   follows the rule above, not this force.
 - When the van comes to rest at a stop, its speed is set to 0 from below `stop_speed_threshold` without a force:
-  at most 0.1 m/s, i.e. at most ½ · 3300 kg · (0.1 m/s)² = 16.5 J per stop that no brake absorbs (below 0.01 K on
-  a disc).
+  at most 0.1 m/s, i.e. at most ½ · m · (0.1 m/s)² per stop that no brake absorbs: 16.5 J for the heaviest van
+  (m = `mass_empty` + `payload_max`, `van_model.yaml`), below 0.01 K on a disc.
 - On a step where a stop cancels a pull-away commanded from rest, the position still advances with the commanded
   speed: the van and the odometer can advance up to about 6 mm on a step at rest (seen on 9 of 320 five-minute
   trips, with no missed stop). The brakes do no work on that step (no disc heating). The odometer also gets up to
@@ -389,9 +396,9 @@ Confirmation thresholds are simulator parameters, not values taken from any real
   real thermostat regulates faster once open.
 - The engine runs for the whole trip and idles at every stop, delivery stops included (ignition on).
   The clutch is modelled only as the idle floor of the engine speed when pulling away in first
-  gear; there are no shift times or torque interruptions. At rest the gear is first and the engine
-  idles. At a delivery stop (0 bar, held by the parking brake, which is not modelled and has no
-  signal) the clutch is open, so the van does not creep; no creep or idle-load torque is modelled.
+  gear; there are no shift times or torque interruptions. At rest the gear is first. At a delivery
+  stop (0 bar, held by the parking brake, which is not modelled and has no signal) the clutch is
+  open, so the van does not creep; no creep or idle-load torque is modelled.
 - The four tyres of a van share one temperature (no load, brake heat or sun effect); their pressures
   differ only by the per-wheel cold pressure. Cold pressures are set at 20 °C whatever the day's
   ambient, so a nominal tyre reads 3.39 bar cold on a −5 °C day. Pressure follows the ideal gas on
