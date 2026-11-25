@@ -10,9 +10,9 @@ requirement → code → test traceability.
 
 | ID | Requirement | Acceptance criterion | Milestone | Status | Verified by |
 | --- | --- | --- | --- | --- | --- |
-| FR-01 | The simulator generates chassis-centred telemetry for a configurable fleet (braking, vehicle dynamics, steering, tyres, simplified powertrain, fault codes): physics at 10 Hz, aggregated periodic messages every 10 s (mean/min/max/last) plus immediate event messages. See `docs/simulator-spec.md` | 100 vehicles; every message validated against the generated schema; 10 s cadence respected (tests) | M1 | Planned | |
-| FR-02 | The simulator injects scripted, reproducible anomalies | Scenario selectable by configuration; fixed random seed yields identical data on every run | M1 | Planned | |
-| FR-03 | The simulator publishes to Kinesis locally and to IoT Core in the demo environment | Target selected by configuration, no code change | M1, M7 | Planned | |
+| FR-01 | The simulator generates chassis-centred telemetry for a configurable fleet (braking, vehicle dynamics, steering, tyres, simplified powertrain, fault codes): physics at 10 Hz, aggregated periodic messages every 10 s (mean/min/max/last) plus immediate event messages. See `docs/simulator-spec.md` | 100 vehicles; every message validated against the generated schema; 10 s cadence respected (tests) | M1 | Verified | `tests/slow/test_fleet_run.py` (`make test-24h`), `tests/unit/simulator/test_aggregator.py` |
+| FR-02 | The simulator injects scripted, reproducible anomalies | Scenario selectable by configuration; fixed random seed yields identical data on every run | M1 | In progress | |
+| FR-03 | The simulator publishes to Kinesis locally and to IoT Core in the demo environment | Target selected by configuration, no code change | M1, M2, M7 | In progress | |
 | FR-04 | The pipeline ingests the Kinesis stream through a Lambda function | Integration test on LocalStack: published message is found in storage | M2 | Planned | |
 | FR-05 | Measurements are stored in DynamoDB keyed by vehicle and timestamp | Latest N measurements of one vehicle retrieved in a single query | M2 | Planned | |
 | FR-06 | The Lambda detects anomalies with rules (thresholds, persistence over a window) | Each FR-02 scenario produces exactly the expected anomaly; a normal stream produces none | M3 | Planned | |
@@ -25,8 +25,8 @@ requirement → code → test traceability.
 | FR-13 | The agent produces a structured diagnostic alert for an anomaly (finding, reference, recommendation) | Output validated against a schema | M5 | Planned | |
 | FR-14 | A Streamlit interface lets users ask questions and see recent anomalies | Usable without a command line; shown in the demo video | M5 | Planned | |
 | FR-15 | The agent provides a fleet-wide view: anomaly counts and per-vehicle rates by type, vehicle model and production batch over a period, computed by the tool, not by the LLM | The "batch defect" scenario surfaces the affected batch; per-vehicle rates exact (unit test); the base-rate evaluation question is answered correctly | M5 | Planned | |
-| FR-16 | A YAML signal catalogue (name, unit, range, resolution, source ECU, invalid value) is the single source of truth for the telemetry schema | Schema generated from the catalogue; a test checks every emitted value against it | M1 | Planned | |
-| FR-17 | Telemetry carries a per-vehicle sequence counter; the transport injects gaps, duplicates and out-of-order delivery; ingestion is idempotent | Duplicates never create a second measurement; gaps detectable from the counter (integration test) | M1, M2 | Planned | |
+| FR-16 | A YAML signal catalogue (name, unit, range, resolution, source ECU, invalid value) is the single source of truth for the telemetry schema | Schema generated from the catalogue; a test checks every emitted value against it | M1 | Verified | `tests/unit/simulator/test_schema.py`, `tests/unit/simulator/test_serialise.py`, `tests/unit/simulator/test_aggregator.py` |
+| FR-17 | Telemetry carries a per-vehicle sequence counter; the transport injects gaps, duplicates and out-of-order delivery; ingestion is idempotent | Duplicates never create a second measurement; gaps detectable from the counter (integration test) | M1, M2 | In progress | |
 | FR-18 | Each fault code carries a subset of the UDS DTC status bits (testFailed, pendingDTC, confirmedDTC, warningIndicatorRequested) with a cycle-based debounce, managed by a simulator fault manager; codes and status are stored by the pipeline and returned by the vehicle data tool; no UDS services are simulated | A fault present in one cycle is pending, not confirmed; present in N cycles it becomes confirmed (unit tests). Last item of M1; moves to v1.1 if M1 exceeds its time box | M1 | Planned | |
 | FR-19 | The pipeline handles processing errors without blocking the stream: partial batch failure reporting, capped retries, and a dead-letter queue (SQS) for records that keep failing | A malformed record ends in the dead-letter queue while the following records are processed (integration test on LocalStack; behaviour checked again in the AWS smoke test) | M2 | Planned | |
 | FR-20 | In demo mode, each vehicle authenticates to IoT Core with its own X.509 certificate; the IoT policy restricts each vehicle to its own client ID and its own topic; no shared key | Publishing on another vehicle's topic is rejected (demo test); private keys never committed | M7 | Planned | |
@@ -39,9 +39,9 @@ requirement → code → test traceability.
 | NFR-02 | Cost | LLM API spend capped at €10 per provider | Spend limit configured in each provider console | M6 | Planned |
 | NFR-03 | Security | No secrets in the repository, history included | gitleaks in pre-commit and CI | M0 | Verified |
 | NFR-04 | Security | Least privilege: one IAM role per Lambda, scoped to its own resources | Checkov without critical findings; policies reviewed in the relevant ADR | M2 | Planned |
-| NFR-05 | Security | Distroless images, no critical CVE, running as non-root | hadolint + Trivy in CI | M1 | Planned |
+| NFR-05 | Security | Distroless images, no critical CVE, running as non-root | hadolint + Trivy in CI | M1 | Verified |
 | NFR-06 | Reproducibility | From `git clone` to a running local stack in under 15 minutes | SETUP.md replayed on a clean environment before v1.0 | M7 | Planned |
-| NFR-07 | Reproducibility | All versions pinned (Python, dependencies, Terraform, providers, images) | `uv.lock`, `.terraform.lock.hcl`, explicit image tags | M0 | In progress |
+| NFR-07 | Reproducibility | All versions pinned (Python, dependencies, Terraform, providers, images) | `uv.lock`, `.terraform.lock.hcl`, explicit image tags | M0, M1, M2 | In progress |
 | NFR-08 | Quality | Test coverage ≥ 80 % on domain logic (simulator, anomaly rules, agent tools) | pytest-cov report in CI | M3 | Planned |
 | NFR-09 | Quality | Lint and formatting clean | ruff, `terraform fmt`, tflint in pre-commit and CI | M0 | Verified |
 | NFR-10 | Observability | Every agent request traced end to end (LLM calls, retrieval, tools) | Traces visible in Phoenix | M6 | Planned |
@@ -49,23 +49,48 @@ requirement → code → test traceability.
 | NFR-12 | Performance | Agent latency measured at p50 and p95 on the 8 GB GPU; p95 target set after the M6 benchmark | Benchmark report in `docs/evaluation/` | M6 | Planned |
 | NFR-13 | Performance | Measurement visible in storage under 5 s after publication, locally | Timed integration test | M2 | Planned |
 | NFR-14 | Portability | LLM provider and model switched by configuration, without code changes | Benchmark run on at least 3 models with the same code | M6 | Planned |
-| NFR-15 | Fidelity | Simulated data is physically plausible and internally consistent (couplings between speed, wheel speeds, yaw rate, lateral acceleration, braking and temperatures) | Property-based invariant tests; 100 vehicles × 24 simulated hours yield zero anomalies; expert review of a simulated vehicle-day plot | M1 | In progress |
+| NFR-15 | Fidelity | Simulated data is physically plausible and internally consistent (couplings between speed, wheel speeds, yaw rate, lateral acceleration, braking and temperatures) | Property-based invariant tests; 100 vehicles × 24 simulated hours yield zero anomalies; expert review of a simulated vehicle-day plot | M1 | Verified |
 
 ## Status notes
 
+- **FR-01:** the 100-vehicle run (`tests/slow/test_fleet_run.py`) validates every delivered message against the
+  committed schema, generated from the catalogue (FR-16), and the 10 s cadence is checked per vehicle by
+  `tests/unit/simulator/test_aggregator.py` (the schema also bounds `window_s` to 10 s). Full day run locally
+  with `make test-24h` on 2026-11-25: 100 vehicles, one full simulated day, no invalid message, no anomaly, no
+  tracked changes. In CI, the Simulator fleet run job runs the same test cut at 09:00 on every pull request
+  (passed in run
+  [45631793296](https://github.com/Gikaze/vehicle-telemetry-diagnostic-agent/actions/runs/45631793296),
+  2026-11-25, a manual run of the branch); the Simulator 24 h workflow runs the whole day weekly once on `main`.
+  Event messages are covered by unit tests (a normal stream sends none); fault codes come with FR-18.
+- **FR-02:** the seed part is in place: the same seed gives the same bytes on the same machine and numpy build,
+  with no claim across machines ([simulator spec](simulator-spec.md), section 5). Remaining: the scripted
+  anomaly scenarios, with the fault-scenario work (M1).
+- **FR-03:** `vtda-simulator` selects stdout, a file or Kinesis by configuration, Kinesis against a local
+  emulator only. Remaining: IoT Core, a minimal path in M2 for the AWS smoke test and the per-vehicle policy in
+  M7 (FR-20).
+- **FR-17:** the per-vehicle sequence counter and the transport defects (gaps, duplicates, reordering) are in
+  place. Remaining: idempotent ingestion (M2); `seq` alone is not a key across runs (message identity,
+  [simulator spec](simulator-spec.md), section 5).
 - **NFR-03:** gitleaks scans staged changes in pre-commit and the PR or push commit range in CI, and the full
   history on the weekly schedule and on manual runs. First full-history scan in CI: 2026-10-08, run
   [37809150845](https://github.com/Gikaze/vehicle-telemetry-diagnostic-agent/actions/runs/37809150845)
   (manual run: 2 commits scanned, the whole history at the time; no leaks found).
+- **NFR-05:** hadolint runs in pre-commit and in the CI Lint job; the Simulator image job builds the image and
+  fails on any CRITICAL vulnerability found by Trivy (passed in run
+  [45631793296](https://github.com/Gikaze/vehicle-telemetry-diagnostic-agent/actions/runs/45631793296),
+  2026-11-25, a manual run of the branch). The image is distroless (`cc-debian13:nonroot`) and runs as UID
+  65532. Policy and trade-offs: [ADR-002](decisions/002-simulator-container-image.md).
 - **NFR-07:** pinned in M0: Python, dev dependencies (`uv.lock`), pre-commit hook revs, the tflint image, GitHub
   Actions (commit SHAs) and CI tool versions. Pinned in M1: the LocalStack image used by `make up`
   (`localstack/localstack-pro:2026.9.1`) and the `lstk` CLI (1.3.0, release checksum verified in
-  `docs/SETUP.md`). Remaining: the simulator image (M1), Terraform and providers (M2).
+  `docs/SETUP.md`), then the simulator image's base images, uv and CPython patch release (`simulator.Dockerfile`)
+  and the Trivy image in CI. Remaining: Terraform and providers (M2).
 - **NFR-15:** property-based invariant tests (Hypothesis) in `tests/unit/simulator/`. Vehicle-day plot
   `docs/assets/m1-vehicle-day.png` (seed 42, VAN-001, `make vehicle-day`) reviewed on 2 November 2026 by the
   author, chassis engineering background: no model change; one open item,
-  [#8](https://github.com/Gikaze/vehicle-telemetry-diagnostic-agent/issues/8) (v2). Remaining: 100 vehicles × 24
-  simulated hours with zero anomalies (M1, telemetry stream).
+  [#8](https://github.com/Gikaze/vehicle-telemetry-diagnostic-agent/issues/8) (v2). 100 vehicles × 24 simulated
+  hours with zero anomalies: `make test-24h`, 2026-11-25 (see FR-01). Zero anomalies is the
+  provisional definition of `simulator/plausibility.py`; the FR-06 rules (M3) replace it.
 
 ## Open questions
 
