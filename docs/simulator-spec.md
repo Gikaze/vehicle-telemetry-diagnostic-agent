@@ -43,7 +43,8 @@ parking brake, gearbox, lighting, body, battery, GNSS.
 
 The catalogue lives in `simulator/catalogue.yaml` and is the **single source of truth**: the telemetry JSON
 schema is generated from it, and tests check every emitted value against it. Each entry defines: name, unit,
-physical range, resolution, source ECU, invalid value, and whether it is modelled dynamically in v1.0.
+physical range, resolution, source ECU, invalid value, and whether it is modelled dynamically in v1.0; a boolean
+may also be marked `event`, so that its rising edge is sent at once as an event message (section 5).
 
 | Group (source ECU) | Signals | v1.0 behaviour |
 | --- | --- | --- |
@@ -119,12 +120,79 @@ Every 10 seconds the simulator emits one **periodic message** per vehicle with, 
 and `last` (counters such as ABS activations for brief events). Urgent changes — an ESC intervention, a new
 DTC — are sent immediately as **event messages**.
 
-**Message envelope.** Every message carries `vehicle_id`, `seq` (monotonic sequence counter), `window_start`,
-`window_s` and `schema_version`, similar in spirit to end-to-end protection counters on vehicle networks.
+Windows follow each trip (`simulator/src/simulator/aggregator.py`): the first starts at the trip's first step,
+each later one 10 s (100 steps) after the previous one, and the last window of a trip holds the remaining 0.1
+to 10 s, its length given by `window_s`. Nothing is sent while a vehicle is parked. Statistics are taken on the
+emitted (measured) samples:
+
+- numeric signals: `min`, `max` and `last` are samples of the window; `mean` is the mean of the samples' grid
+  indices (`(value − offset) / resolution`) rounded half to even, so every statistic lies on the catalogue grid
+  and within its range. A sample at the signal's invalid value stays out of `mean`, `min` and `max`; `last` is
+  the last sample as read, invalid or not; a window without a valid sample reports the invalid value for all
+  four. No v1.0 sample is invalid (readings saturate at the range bounds); the rule is in place for sensor
+  faults;
+- boolean signals: `last`, and `count`, the rising edges (false to true) between consecutive samples of the
+  trip; the value before a window's first sample is the previous window's last one, and a trip's first sample
+  is never an edge.
+
+Event messages: a rising edge of a boolean marked `event` in the catalogue (`abs_active`, `esc_active`,
+`tcs_active` in v1.0; warning lamps and `sas_calibrated` are not event signals in v1.0) is sent at
+the step where it is seen, with `trigger: {signal, value: true}`. These are the same edges `count` counts, so
+a trip's first sample never sends one. Within a step, a vehicle's events come before the periodic message of a
+window that closes at that step, which counts the same edges. No event is sent in a normal v1.0 stream (section
+8: ABS, TCS and ESC never intervene); DTC events come with the fault overlay (section 6).
+
+**Message envelope.** Every message carries `message_type` (`periodic` or `event`), `schema_version`,
+`vehicle_id`, `seq` (monotonic sequence counter), `window_start` and `window_s`, similar in spirit to end-to-end
+protection counters on vehicle networks. For an event, `window_start` is the time of the sample where the edge
+is seen and `window_s` is 0.1, the physics step that sample describes (section 4).
+
+**Time and serialisation.** Simulated time counts fleet steps from midnight (UTC) of the start date in
+`simulator/config/stream.yaml`; a step becomes a time stamp in whole milliseconds (`step × 100`), ISO 8601
+UTC such as `2026-01-05T06:00:37.000Z`, never through float seconds (`simulator/src/simulator/clock.py`). A
+message is one compact JSON object (`simulator/src/simulator/serialise.py`): envelope keys in the order above,
+then `signals` (in catalogue order; `mean`, `min`, `max`, `last` or `last`, `count`) or `trigger`; numbers as
+the shortest decimal that reads back to the same float, `window_s` from the whole number of steps (0.3, not
+0.30000000000000004); no NaN. The same seed gives the same bytes on the same machine and numpy build; the
+partition key of a message is its vehicle ID.
 
 **Delivery realism.** The transport layer injects, at configurable rates: gaps (e.g. tunnels), duplicates and
 out-of-order delivery. The pipeline must ingest idempotently: a duplicate never creates a second measurement,
 and a gap is detectable from the sequence counter.
+
+Each vehicle has one sequence counter per run, from 0, shared by all message types
+(`simulator/src/simulator/transport.py`). `seq` is assigned before any defect, so a lost message leaves a gap.
+Each message then takes three uniform draws from the vehicle's `TRANSPORT` stream, always in the order gap,
+duplicate, reorder, so changing one rate never moves another rate's decisions; the rates are in
+`simulator/config/stream.yaml`, all 0 by default. A lost message is not delivered; a duplicate is delivered twice
+in a row with the same `seq`; a reordered message is held, one at a time per vehicle, and delivered right after
+the vehicle's next delivered message, or when its trip's last record arrives if none is delivered before. A
+vehicle's defects depend only on the root seed, its ID and its own messages.
+
+**Publishing.** The delivered messages go to standard output or a file as JSON Lines, or to a Kinesis stream
+(`simulator/src/simulator/publishers.py`). The Kinesis publisher only targets a local emulator: its endpoint,
+`AWS_ENDPOINT_URL`, must be `http(s)://localhost` or `127.0.0.1`, and its credentials come from
+`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` only, never from a profile or a `~/.aws` file; both checks run
+before any client is created. Requests stay within the PutRecords limits (500 records, 10 MiB including
+partition keys); records the service fails are sent again, up to 5 attempts, then the run fails. PutRecords
+does not keep order, and a retried record lands after records sent later: a consumer must order a vehicle's
+messages by `seq`.
+
+**Message identity.** `seq` restarts at 0 on every run. Within a run, a message is identified by `vehicle_id`,
+`message_type` and `window_start`, and an event also by `trigger.signal` (several events can share a step).
+Nothing in the envelope tells two runs apart: two runs over the same start date, whatever their seeds, produce
+the same identities. How the M2 pipeline keeps runs apart for idempotent ingestion is left to M2. `seq` orders a
+vehicle's messages and shows gaps within a run.
+
+**Running the stream.** `vtda-simulator` (`simulator/src/simulator/cli.py`, `make stream`) takes every setting
+as an argument or an environment variable (`.env.example`), the argument winning: seed, fleet size, days, target
+(`stdout`, `file` or `kinesis`), output file, stream name, mode, start date (default: `start_date` of
+`stream.yaml`) and a message limit. The transport rates are read from `stream.yaml` only. In `batch` mode the
+messages are published as fast as they are made; in `paced` mode the messages of a fleet step are published
+when the wall time since the first published step reaches the simulated time between them, parked periods
+included, and standard output or the file is flushed after each step's messages. The exit code is 0 for a
+complete run, 2 for a refused setting or configuration (nothing is published) and 1 for a publication that
+fails during the run.
 
 ## 6. Fault models (FR-02)
 
@@ -202,7 +270,15 @@ Confirmation thresholds are simulator parameters, not values taken from any real
      front/rear ratio of the axle mean rises above ambient, averaged over a window once the rear rise exceeds a
      threshold, stays within its bounds (`plausibility.yaml`; section 8).
 3. **Normal-stream test:** 100 vehicles × 24 simulated hours produce **zero** anomalies (false-positive check,
-   shared with FR-06).
+   shared with FR-06). Until the FR-06 rules exist (M3), an anomaly is what the provisional stream check
+   (`simulator/src/simulator/plausibility.py`) reports on the parsed messages: a statistic outside its catalogue
+   range or grid, or at its invalid value; more rising edges than half a window's samples; a left/right disc
+   spread, a front/rear disc ratio (over `disc_ratio_window` in whole 10 s windows), a coolant step between
+   consecutive windows or a coolant maximum beyond the `plausibility.yaml` bounds, each widened by the
+   measurement error of the emitted statistic. The check keeps a bounded state per vehicle, never a whole trip.
+   `make test-24h` runs it (`tests/slow/test_fleet_run.py`, seed 42): every delivered message is validated
+   against the committed schema and checked, and the test prints a summary (commit, counts, stream SHA-256,
+   stage times, peak memory); `UNTIL=HH:MM` stops day 0 at that time, `VEHICLES=n` changes the fleet size.
 4. **Scenario tests:** each fault model produces its expected signature, and only that one.
 5. **Expert review:** a plot of one simulated vehicle-day (speed, accelerations, temperatures, pressures) is
    published in `docs/assets/` and reviewed by a domain expert before v1.0. `make vehicle-day` runs one fleet
@@ -217,15 +293,16 @@ Confirmation thresholds are simulator parameters, not values taken from any real
   knowledge; they are listed with their rationale in `simulator/config/` and are not calibrated against any
   real vehicle.
 - **Duty cycle and terrain.** A van-day is a regional delivery round: the shift starts between 06:30 and 07:30
-  and ends between 16:00 and 18:30, with 4 to 6 trips and a lunch break; urban segments end in a delivery stop
-  with probability 0.7. Over the 10 vans of `make vehicle-day` (seed 42; true distance from the day summary in
-  `simulator/src/simulator/fleet_day.py`), a van drives 324.6 to 427.5 km and makes 20 to 37 delivery stops
-  (VAN-001: 415.9 km in 5 trips, 33 delivery stops). The terrain is temperate, low-altitude and hilly: urban
-  grades within ±2 %, rural ±3 %, descents of 7 to 10 % lasting 2 to 5 min; the grade is constant within a segment
-  and steps at segment boundaries. Altitude is not tracked: descents are not balanced by climbs, and the
-  atmospheric pressure stays at 1.013 bar. The ambient temperature is one value per day for the whole fleet (a
-  fleet stream), drawn uniformly between −5 and 30 °C as the daily mean of a temperate lowland year: no diurnal
-  cycle, the uniform draw over-weights the extremes, and one day tests one ambient.
+  and ends between 16:00 and 18:30, in simulated UTC (the clock of section 5), with 4 to 6 trips and a lunch
+  break; urban segments end in a delivery stop with probability 0.7. Over the 10 vans of `make vehicle-day`
+  (seed 42; true distance from the day summary in `simulator/src/simulator/fleet_day.py`), a van drives 324.6
+  to 427.5 km and makes 20 to 37 delivery stops (VAN-001: 415.9 km in 5 trips, 33 delivery stops). The terrain
+  is temperate, low-altitude and hilly: urban grades within ±2 %, rural ±3 %, descents of 7 to 10 % lasting 2 to
+  5 min; the grade is constant within a segment and steps at segment boundaries. Altitude is not tracked:
+  descents are not balanced by climbs, and the atmospheric pressure stays at 1.013 bar. The ambient temperature
+  is one value per day for the whole fleet (a fleet stream), drawn uniformly between −5 and 30 °C as the daily
+  mean of a temperate lowland year: no diurnal cycle, the uniform draw over-weights the extremes, and one day
+  tests one ambient.
 - The single-track model is kinematic and is used at low lateral acceleration only; the simulator does not
   reproduce limit handling. Transient dynamics are reduced: no tyre relaxation lag, no roll, no yaw inertia or
   damping, so the yaw rate and lateral acceleration follow the steering angle within the step. Axle loads are
@@ -240,12 +317,12 @@ Confirmation thresholds are simulator parameters, not values taken from any real
   with the shortest curvature ramp: `curve_transition_time_min` = 2 s (the cap `R · angle / v` is never shorter,
   at least 2.47 s for downhill bends), so `ψ̈ = v / (R · t)` = 0.224 rad/s². The extra terms then reach 0.34 to
   0.44 m/s² on `a_y` on the ramps and −0.30 to −0.40 m/s² on `a_x` in the arc.
-- Sensor noise is Gaussian, white and unbiased, clipped at 3 σ, so every measurement error of a true value inside the
-  catalogue range is at most 3 σ plus half the resolution. There is no offset, drift or filtering (the coolant σ
-  stands for the ECU's filtered reading). A wheel speed sensor reads exactly 0 at standstill. Readings saturate at
-  the range bounds: a released brake (0 bar) reads 0 to 0.6 bar and a released accelerator 0 to 0.6 %, exactly 0
-  in about 60 % of the samples; `brake_pedal_pressed` comes from the brake light switch on the true pressure, not
-  from this reading.
+- Sensor noise is Gaussian, white and unbiased, clipped at 3 σ, so every measurement error of a true value inside
+  the catalogue range is at most 3 σ plus half the resolution. There is no offset, drift or filtering (the
+  coolant σ stands for the ECU's filtered reading). A wheel speed sensor reads exactly 0 at standstill. Readings
+  saturate at the range bounds: a released brake (0 bar) reads 0 to 0.6 bar and a released accelerator 0 to
+  0.6 %, exactly 0 in about 60 % of the samples; `brake_pedal_pressed` comes from the brake light switch on the
+  true pressure, not from this reading.
 - `accel_long` reads the derivative of the speed, `dv/dt`. A real accelerometer on a grade also reads the gravity
   component along the road, `g · sin(atan(grade))` (about 1 m/s² on a 10 % grade); the model leaves it out.
 - Brake pedal at stops: whenever the van is at rest (speed 0 at both ends of a step) outside a delivery stop,
@@ -262,8 +339,8 @@ Confirmation thresholds are simulator parameters, not values taken from any real
   force of `F_hold` (supplied by the parking brake at a delivery, with the pedal released); the pressure still
   follows the rule above, not this force.
 - When the van comes to rest at a stop, its speed is set to 0 from below `stop_speed_threshold` without a force:
-  at most 0.1 m/s, i.e. at most ½ · 3300 kg · (0.1 m/s)² = 16.5 J per stop that no brake absorbs (below 0.01 K on
-  a disc).
+  at most 0.1 m/s, i.e. at most ½ · m · (0.1 m/s)² per stop that no brake absorbs: 16.5 J for the heaviest van
+  (m = `mass_empty` + `payload_max`, `van_model.yaml`), below 0.01 K on a disc.
 - On a step where a stop cancels a pull-away commanded from rest, the position still advances with the commanded
   speed: the van and the odometer can advance up to about 6 mm on a step at rest (seen on 9 of 320 five-minute
   trips, with no missed stop). The brakes do no work on that step (no disc heating). The odometer also gets up to
@@ -303,10 +380,15 @@ Confirmation thresholds are simulator parameters, not values taken from any real
   ambient stays in [1.69, 1.84] over 60 s windows once the rear rise exceeds 20 K (`plausibility.yaml`; invariant
   tests on the true state in `tests/unit/simulator/test_thermal.py`). Both follow from the model: the same cooling
   law on all four discs, a fixed brake split and per-wheel heat capacities within ±2 %. Real vans vary more
-  (different front and rear cooling, caliper drag). On emitted values the ratio bounds widen with the resolution
-  of the disc estimates (1 K) and of the ambient (0.5 K), both noise-free: to [1.59, 1.95] at the 20 K threshold
-  (`disc_ratio_min_rear_rise` rationale). No code computes this widening yet; the M3 rules, which work on emitted
-  data, will derive it from the catalogue resolutions.
+  (different front and rear cooling, caliper drag). On emitted samples the ratio bounds widen with the
+  resolution of the disc estimates (1 K) and of the ambient (0.5 K), both noise-free: to [1.59, 1.95] at the 20 K
+  threshold (`disc_ratio_min_rear_rise` rationale). The messages carry 10 s window means, whose disc error is one
+  resolution (half from the samples, half from rounding the mean); the provisional stream check
+  (`simulator/src/simulator/plausibility.py`) computes the widening from the catalogue resolutions on those means,
+  with d = 1.25 K the error of an axle mean rise (1 K per disc mean, 0.25 K on the day's constant ambient). The
+  bounds hold once the true rear rise exceeds 20 K, so the check evaluates the ratio only once the measured rise
+  minus d does, above 21.25 K, where the widened bounds are [1.53, 2.01]; they narrow as the rise grows. The M3
+  rules will derive their own.
 - `eps_temperature` reads the day's ambient (no EPS thermal model in v1.0); `eps_derating_active`,
   `brake_pad_wear_warning` and `brake_fluid_level_warning` are false and `sas_calibrated` true
   unless a scenario sets them.
@@ -314,9 +396,9 @@ Confirmation thresholds are simulator parameters, not values taken from any real
   real thermostat regulates faster once open.
 - The engine runs for the whole trip and idles at every stop, delivery stops included (ignition on).
   The clutch is modelled only as the idle floor of the engine speed when pulling away in first
-  gear; there are no shift times or torque interruptions. At rest the gear is first and the engine
-  idles. At a delivery stop (0 bar, held by the parking brake, which is not modelled and has no
-  signal) the clutch is open, so the van does not creep; no creep or idle-load torque is modelled.
+  gear; there are no shift times or torque interruptions. At rest the gear is first. At a delivery
+  stop (0 bar, held by the parking brake, which is not modelled and has no signal) the clutch is
+  open, so the van does not creep; no creep or idle-load torque is modelled.
 - The four tyres of a van share one temperature (no load, brake heat or sun effect); their pressures
   differ only by the per-wheel cold pressure. Cold pressures are set at 20 °C whatever the day's
   ambient, so a nominal tyre reads 3.39 bar cold on a −5 °C day. Pressure follows the ideal gas on

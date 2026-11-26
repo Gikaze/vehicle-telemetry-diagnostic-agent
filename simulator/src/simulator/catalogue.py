@@ -26,7 +26,7 @@ REQUIRED_FIELDS = (
     "invalid",
     "dynamic",
 )
-OPTIONAL_FIELDS = ("description",)
+OPTIONAL_FIELDS = ("description", "event")
 ENCODING_FIELDS = ("range", "resolution", "raw_bits", "offset", "invalid")
 
 # Raw-unit tolerance when checking that a float lies on the resolution grid: float division
@@ -58,6 +58,7 @@ class Signal:
     invalid: float | None
     dynamic: bool
     description: str | None = None
+    event: bool = False  # booleans only: a rising edge sends an event message (spec section 5)
 
     @property
     def is_number(self) -> bool:
@@ -89,6 +90,11 @@ class Catalogue:
     @property
     def names(self) -> tuple[str, ...]:
         return tuple(signal.name for signal in self.signals)
+
+    @property
+    def event_names(self) -> tuple[str, ...]:
+        """Signals whose rising edge sends an event message, in catalogue order."""
+        return tuple(signal.name for signal in self.signals if signal.event)
 
 
 @cache
@@ -124,6 +130,11 @@ def _parse_signal(entry: dict[str, Any], ecu_ids: set[str]) -> Signal:
         raise CatalogueError(f"{name}: unknown fields {unknown}")
     if "description" in entry and not isinstance(entry["description"], str):
         raise CatalogueError(f"{name}: description must be text")
+    if "event" in entry:
+        if not isinstance(entry["event"], bool):
+            raise CatalogueError(f"{name}: event must be true or false")
+        if entry["type"] != "boolean":
+            raise CatalogueError(f"{name}: only booleans send event messages")
     if entry["ecu"] not in ecu_ids:
         raise CatalogueError(f"{name}: unknown ECU {entry['ecu']!r}")
     if entry["type"] == "boolean":
@@ -156,6 +167,7 @@ def _parse_signal(entry: dict[str, Any], ecu_ids: set[str]) -> Signal:
         invalid=entry["invalid"],
         dynamic=entry["dynamic"],
         description=entry.get("description"),
+        event=entry.get("event", False),
     )
 
 
@@ -167,9 +179,23 @@ def quantise(values: np.ndarray, signal: Signal) -> np.ndarray:
     Saturation to the measurement range and invalid values are handled by the sensor layer;
     the invalid value is always copied from the catalogue, never recomputed here.
     """
+    return from_raw(to_raw(values, signal), signal)
+
+
+def to_raw(values: np.ndarray, signal: Signal) -> np.ndarray:
+    """Grid index of physical values, (value - offset) / resolution rounded half to even (float
+    array of whole numbers)."""
     assert signal.resolution is not None and signal.offset is not None
-    raw = np.round((np.asarray(values, dtype=float) - signal.offset) / signal.resolution)
-    return np.round(signal.offset + raw * signal.resolution, signal.decimals)
+    return np.round((np.asarray(values, dtype=float) - signal.offset) / signal.resolution)
+
+
+def from_raw(raw: np.ndarray, signal: Signal) -> np.ndarray:
+    """Physical value of whole grid indices: offset + raw * resolution, rounded to the decimals of
+    the resolution (the float of the decimal literal)."""
+    assert signal.resolution is not None and signal.offset is not None
+    return np.round(
+        signal.offset + np.asarray(raw, dtype=float) * signal.resolution, signal.decimals
+    )
 
 
 def on_grid(value: float, resolution: float, offset: float = 0.0) -> bool:

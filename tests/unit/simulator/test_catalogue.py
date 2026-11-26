@@ -122,6 +122,9 @@ def _without(entry: dict[str, object], field: str) -> dict[str, object]:
         *[([_without(_number_entry(), field)], "missing fields") for field in REQUIRED_FIELDS],
         ([_number_entry(colour="red")], "unknown fields"),
         ([_number_entry(description=5)], "description must be text"),
+        ([_number_entry(event=True)], "only booleans send event messages"),
+        ([_boolean_entry(event="yes")], "event must be true or false"),
+        ([_boolean_entry(event=1)], "event must be true or false"),
         ([_number_entry(ecu="gearbox")], "unknown ECU"),
         ([_number_entry(), _number_entry()], "duplicate signal names"),
         ([_number_entry(type="string")], "unknown type"),
@@ -157,7 +160,25 @@ def test_loader_accepts_the_minimal_entries(tmp_path: Path) -> None:
         "signals": [_number_entry(), _boolean_entry(name="y")],
     }
     path.write_text(yaml.safe_dump(document))
-    assert load_catalogue(path).names == ("x", "y")
+    loaded = load_catalogue(path)
+    assert loaded.names == ("x", "y")
+    assert loaded.event_names == ()
+
+
+def test_event_is_read_on_booleans(tmp_path: Path) -> None:
+    path = tmp_path / "catalogue.yaml"
+    document = {
+        "schema_version": 1,
+        "ecus": [{"id": "ecm", "description": "e"}],
+        "signals": [
+            _boolean_entry(name="a", event=True),
+            _boolean_entry(name="b", event=False),
+            _boolean_entry(name="c"),
+            _boolean_entry(name="d", event=True),
+        ],
+    }
+    path.write_text(yaml.safe_dump(document))
+    assert load_catalogue(path).event_names == ("a", "d")
 
 
 def test_signal_names_are_unique() -> None:

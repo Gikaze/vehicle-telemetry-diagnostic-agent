@@ -27,7 +27,9 @@ In Docker Desktop: **Settings → General → Use the WSL 2 based engine**, then
 ## 3. Tools inside WSL
 
 uv, pre-commit and Terraform are pinned (NFR-07). These versions must stay in sync with the `env` block of
-`.github/workflows/ci.yml`; change both together.
+`.github/workflows/ci.yml`; change both together. The uv version is also in the `env` block of
+`.github/workflows/simulator-24h.yml` and in the uv image tag of `simulator.Dockerfile`: a unit test
+(`tests/unit/test_repository_foundations.py`) fails when the four disagree.
 
 ```bash
 # Base tools
@@ -116,6 +118,45 @@ make test       # unit tests with coverage
 No linter needs a manual install: ruff comes from `uv.lock`, gitleaks and hadolint are installed by pre-commit,
 and tflint runs from a pinned container image. **Docker Desktop must be running to commit Terraform files**
 (the tflint hook); `terraform fmt` uses the local Terraform.
+
+## 7. Simulator image
+
+Optional: the simulator also runs from the source tree (`make stream`). The image needs Docker Desktop running
+(section 2) and the project environment (section 6).
+
+```bash
+make image      # builds vtda-simulator:<version>, <version> = `uv version --package vtda-simulator --short`
+```
+
+`make image` refuses to build while any image input (`IMAGE_INPUTS` in the `Makefile`) has uncommitted changes:
+it lists them and exits, so the image's revision label always names a real commit. The build context is the
+repository root, filtered by the `.dockerignore` allowlist.
+
+```bash
+# stdout target (the default)
+docker run --rm vtda-simulator:<version> --vehicles 3 --max-messages 500 > run.jsonl
+
+# file target: --out is relative to /data, the image's working directory; the file lands in out/run.jsonl
+mkdir -p out
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/out:/data" vtda-simulator:<version> --target file --out run.jsonl
+
+# settings: the same options as make stream; SIM_* variables reach the container only with -e
+docker run --rm vtda-simulator:<version> --help
+docker run --rm -e SIM_SEED=7 vtda-simulator:<version> --max-messages 500 > run.jsonl   # same as --seed 7
+```
+
+`/data` is root-owned on purpose, so the file target needs a mounted directory. Without one, the run fails with
+`Permission denied: '/data/run.jsonl'` and exit code 2, instead of writing a file that is lost with the
+container. An argument wins over its variable, as with `make stream`.
+
+The image has no shell. To get an interpreter for debugging, replace the entry point:
+
+```bash
+docker run --rm --entrypoint /app/.venv/bin/python vtda-simulator:<version> -c "import sys; print(sys.version)"
+```
+
+The choices behind the image (base image, interpreter, scan policy) are recorded in
+[ADR-002](decisions/002-simulator-container-image.md).
 
 ## Troubleshooting — issues actually met
 

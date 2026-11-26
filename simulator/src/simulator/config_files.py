@@ -1,15 +1,18 @@
-"""Layouts and semantic checks of the vehicle model, sensor and plausibility configuration files.
+"""Layouts and semantic checks of the vehicle model, sensor, plausibility and stream configuration
+files.
 
 The parameter sets below are the complete list of constants the vehicle model, the brake ECU logic,
-the sensor layer and the invariant checks may use; a constant used in code must appear here and in
-the matching YAML file with its rationale.
+the sensor layer, the invariant checks and the telemetry transport may use; a constant used in code
+must appear here and in the matching YAML file with its rationale.
 """
 
+import datetime
+import re
 from functools import cache
 from itertools import pairwise
 from pathlib import Path
 
-from simulator.constants import PHYSICS_DT
+from simulator.constants import AGGREGATION_WINDOW, PHYSICS_DT
 from simulator.params import Config, ConfigError, Layout, config_path, load_config
 
 DRIVE_AXLES = ("front", "rear")
@@ -148,6 +151,11 @@ PLAUSIBILITY_LAYOUT = Layout(
     ),
 )
 
+# Delivery defects injected by the transport (FR-17), as probabilities per message; the simulated
+# start date (structure: an ISO date as text).
+TRANSPORT_RATES = ("gap_rate", "duplicate_rate", "reorder_rate")
+STREAM_LAYOUT = Layout(structural={("start_date",): str}, parameters=frozenset(TRANSPORT_RATES))
+
 
 @cache
 def van_model() -> Config:
@@ -163,6 +171,11 @@ def sensors() -> Config:
 @cache
 def plausibility() -> Config:
     return load_plausibility()
+
+
+@cache
+def stream_config() -> Config:
+    return load_stream_config()
 
 
 def load_van_model(path: Path | None = None) -> Config:
@@ -187,7 +200,42 @@ def load_plausibility(path: Path | None = None) -> Config:
     config = load_config(path or config_path("plausibility.yaml"), PLAUSIBILITY_LAYOUT)
     if not config.value("disc_front_rear_ratio_min") < config.value("disc_front_rear_ratio_max"):
         raise ConfigError("plausibility.yaml: disc_front_rear_ratio_min must be below the maximum")
+    windows = config.si("disc_ratio_window") / AGGREGATION_WINDOW
+    if not (windows >= 1 and windows == round(windows)):
+        raise ConfigError(
+            "plausibility.yaml: disc_ratio_window must be a whole number of "
+            f"{AGGREGATION_WINDOW} s telemetry windows (the stream check averages whole windows)"
+        )
     return config
+
+
+def load_stream_config(path: Path | None = None) -> Config:
+    """stream.yaml; every transport rate a probability in [0, 1]; the start date YYYY-MM-DD."""
+    config = load_config(path or config_path("stream.yaml"), STREAM_LAYOUT)
+    for name in TRANSPORT_RATES:
+        if not 0 <= config.value(name) <= 1:
+            raise ConfigError(f"stream.yaml: {name} must lie between 0 and 1")
+    start_date(config)
+    return config
+
+
+def parse_date(text: str) -> datetime.date:
+    """A YYYY-MM-DD calendar date (the extended ISO 8601 form only: date.fromisoformat alone also
+    takes 20260105); ValueError otherwise. Shared by stream.yaml and the command line."""
+    if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", text):
+        raise ValueError(f"must be YYYY-MM-DD, got {text!r}")
+    try:
+        return datetime.date.fromisoformat(text)
+    except ValueError as error:
+        raise ValueError(f"{text!r} is not a date") from error
+
+
+def start_date(config: Config) -> datetime.date:
+    """The simulated start date of stream.yaml, a YYYY-MM-DD date."""
+    try:
+        return parse_date(config.structure[("start_date",)])
+    except ValueError as error:
+        raise ConfigError(f"stream.yaml: start_date {error}") from error
 
 
 def _check_noise(config: Config) -> None:

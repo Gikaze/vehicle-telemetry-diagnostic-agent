@@ -54,8 +54,11 @@ make setup      # uv sync + pre-commit install
 make lint       # ruff, terraform fmt -check, tflint, hadolint
 make test       # unit tests with coverage
 make test-int   # integration tests against LocalStack (requires `lstk` running)
+make test-24h   # fleet run, 100 vans × 24 h (UNTIL=09:00 cuts day 0): every message validated and checked
 make schema     # regenerate the telemetry JSON Schema from simulator/catalogue.yaml
 make vehicle-day  # run and check one fleet day (10 vans, seed 42), plot docs/assets/m1-vehicle-day.png
+make stream     # run the telemetry stream (vtda-simulator); settings from SIM_* variables or ARGS="..."
+make image      # build the simulator image vtda-simulator:<version> (simulator.Dockerfile), committed inputs only
 make up         # start LocalStack and local services
 make down       # stop everything
 ```
@@ -102,8 +105,8 @@ line.
 | --- | --- | --- |
 | `feat` | New behaviour | simulator, pipeline, agent, rag, ui |
 | `fix` | Bug fix | same as feat |
-| `infra` | Terraform, Docker, Compose | kinesis, lambda, dynamodb, iot, compose |
-| `test` | Tests only | unit, integration, eval |
+| `infra` | Terraform, Docker, Compose | kinesis, lambda, dynamodb, iot, compose, image |
+| `test` | Tests only | unit, integration, slow, eval |
 | `docs` | Documentation, ADRs | readme, adr, setup, cost, requirements |
 | `ci` | GitHub Actions, hooks | ci, pre-commit |
 | `refactor`, `chore` | Restructuring, maintenance | — |

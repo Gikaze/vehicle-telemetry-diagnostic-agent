@@ -62,11 +62,12 @@ together, and what is only validated on AWS: [docs/local-vs-aws.md](docs/local-v
 | Decision | Choice | Record |
 | --- | --- | --- |
 | Local AWS emulation | LocalStack (Hobby) driven by `lstk` | [ADR-001](docs/decisions/001-local-aws-emulation.md) |
-| Telemetry storage | DynamoDB vs RDS | ADR-002 (M2) |
-| Vector store | Qdrant vs FAISS | ADR-003 (M4) |
-| Agent orchestration | LangChain vs LangGraph | ADR-004 (M5) |
-| Edge/cloud split | Local inference, cloud ingestion | ADR-005 (M5) |
-| LLM | Local model vs API, by measurement | ADR-006 (M6) |
+| Simulator container image | Distroless cc-debian13 + uv-managed CPython 3.12 | [ADR-002](docs/decisions/002-simulator-container-image.md) |
+| Telemetry storage | DynamoDB vs RDS | ADR-003 (M2) |
+| Vector store | Qdrant vs FAISS | ADR-004 (M4) |
+| Agent orchestration | LangChain vs LangGraph | ADR-005 (M5) |
+| Edge/cloud split | Local inference, cloud ingestion | ADR-006 (M5) |
+| LLM | Local model vs API, by measurement | ADR-007 (M6) |
 
 ## Project details
 

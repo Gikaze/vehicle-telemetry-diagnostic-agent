@@ -1,4 +1,5 @@
-"""FR-16: the telemetry schema is generated from the catalogue; the committed copy has no drift."""
+"""FR-16: the telemetry schema is generated from the catalogue; the committed copy has no drift.
+Periodic and event messages (spec section 5)."""
 
 import copy
 import json
@@ -121,6 +122,64 @@ def test_boolean_count_must_be_a_non_negative_integer() -> None:
     message = periodic_message()
     message["signals"]["abs_active"]["count"] = -1
     assert not validator().is_valid(message)
+
+
+def event_message() -> dict[str, Any]:
+    """A valid event message: abs_active rising at 07:30:12.3."""
+    return {
+        "message_type": "event",
+        "schema_version": catalogue().schema_version,
+        "vehicle_id": "VAN-042",
+        "seq": 17,
+        "window_start": "2026-01-05T07:30:12.300Z",
+        "window_s": 0.1,
+        "trigger": {"signal": "abs_active", "value": True},
+    }
+
+
+@pytest.mark.parametrize("name", ["abs_active", "esc_active", "tcs_active"])
+def test_valid_event_message_passes(name: str) -> None:
+    message = event_message()
+    message["trigger"]["signal"] = name
+    validator().validate(json.loads(json.dumps(message)))
+
+
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        (("trigger", "signal"), "brake_pedal_pressed"),  # a boolean without `event`
+        (("trigger", "signal"), "coolant_temp"),
+        (("trigger", "value"), False),
+        (("window_s",), 10),
+        (("window_s",), 0.2),
+        (("message_type",), "periodic"),
+        (("seq",), -1),
+    ],
+)
+def test_event_message_violations_fail(path: tuple[str, ...], value: Any) -> None:
+    message = event_message()
+    target = message
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = value
+    assert not validator().is_valid(message)
+
+
+def test_an_event_message_carries_a_trigger_and_no_signals() -> None:
+    without = event_message()
+    del without["trigger"]
+    assert not validator().is_valid(without)
+    with_signals = event_message()
+    with_signals["signals"] = periodic_message()["signals"]
+    assert not validator().is_valid(with_signals)
+
+
+def test_event_signals_come_from_the_catalogue() -> None:
+    """The trigger's signal enum is the catalogue's event signals, and an event describes one
+    physics step."""
+    trigger = schema()["$defs"]["event_message"]["properties"]["trigger"]
+    assert trigger["properties"]["signal"]["enum"] == ["abs_active", "esc_active", "tcs_active"]
+    assert schema()["$defs"]["event_message"]["properties"]["window_s"]["const"] == 0.1
 
 
 def test_resolution_is_annotated_not_validated() -> None:

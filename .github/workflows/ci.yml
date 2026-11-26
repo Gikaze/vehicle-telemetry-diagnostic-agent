@@ -58,6 +58,107 @@ jobs:
       - name: Run unit tests with coverage
         run: make test
 
+  fleet-run:
+    name: Simulator fleet run
+    # The weekly full day is the Simulator 24 h workflow; the scheduled CI run skips the cut one.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      # Day 0 of the 100-van fleet run stops at this simulated time (HH:MM): the per-PR form of
+      # the 24 h run (make test-24h). If the test step takes over 7 min, move it to "08:30".
+      FLEET_RUN_UNTIL: "09:00"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Run 100 vans until FLEET_RUN_UNTIL, every message validated and checked
+        run: make test-24h UNTIL="$FLEET_RUN_UNTIL" SUMMARY=fleet-run-summary.json
+      - name: Add the run summary to the job summary
+        if: always()
+        run: |
+          if [ -s fleet-run-summary.json ]; then
+            {
+              echo "### Simulator fleet run: 100 vans, day 0 until $FLEET_RUN_UNTIL"
+              echo '```json'
+              cat fleet-run-summary.json
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### Simulator fleet run: no summary (the run failed or did not run)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  image:
+    name: Simulator image
+    # Also on the weekly schedule: new vulnerabilities appear without code changes.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      # Official Trivy image (trivy.dev installation docs), pinned by tag and digest (NFR-07).
+      TRIVY_IMAGE: ghcr.io/aquasecurity/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: Build the image (make image refuses uncommitted inputs; nothing is pushed)
+        run: |
+          make image
+          echo "TAG=vtda-simulator:$(uv version --package vtda-simulator --short)" >> "$GITHUB_ENV"
+      - name: The entry point answers
+        run: docker run --rm --network none "$TAG" --help
+      - name: pip and ensurepip are absent from the image
+        run: |
+          docker run --rm --network none --entrypoint /app/.venv/bin/python "$TAG" -c '
+          import sys
+          for name in ("pip", "ensurepip"):
+              try:
+                  __import__(name)
+              except ModuleNotFoundError:
+                  print(name, "is absent")
+              else:
+                  sys.exit(f"{name} is importable in the image")
+          '
+      - name: Without a mount, --out fails (/data is root-owned)
+        run: |
+          set +e
+          docker run --rm --network none "$TAG" --vehicles 1 --max-messages 5 \
+            --target file --out /data/run.jsonl 2> "$RUNNER_TEMP/no-mount.err"
+          status=$?
+          set -e
+          cat "$RUNNER_TEMP/no-mount.err"
+          test "$status" -eq 2
+          grep -qF "Permission denied: '/data/run.jsonl'" "$RUNNER_TEMP/no-mount.err"
+      - name: The image and the source give the same stream on this runner
+        run: |
+          set -o pipefail
+          uv sync --locked
+          docker run --rm --network none "$TAG" --vehicles 3 --max-messages 500 > "$RUNNER_TEMP/image.jsonl"
+          uv run vtda-simulator --vehicles 3 --max-messages 500 > "$RUNNER_TEMP/source.jsonl"
+          sha256sum "$RUNNER_TEMP/image.jsonl" "$RUNNER_TEMP/source.jsonl"
+          test "$(wc -l < "$RUNNER_TEMP/image.jsonl")" -eq 500
+          cmp "$RUNNER_TEMP/image.jsonl" "$RUNNER_TEMP/source.jsonl"
+      - name: Trivy report, all severities (job summary)
+        run: |
+          docker save -o "$RUNNER_TEMP/image.tar" "$TAG"
+          docker run --rm -v "$RUNNER_TEMP:/work" -v "$RUNNER_TEMP/trivy-cache:/root/.cache/" "$TRIVY_IMAGE" \
+            image --input /work/image.tar --scanners vuln,secret --no-progress \
+            --format table --output /work/trivy.txt
+          {
+            echo "### Trivy: $TAG"
+            echo '```'
+            cat "$RUNNER_TEMP/trivy.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Trivy gate, no critical vulnerability (NFR-05)
+        run: |
+          docker run --rm -v "$RUNNER_TEMP:/work" -v "$RUNNER_TEMP/trivy-cache:/root/.cache/" "$TRIVY_IMAGE" \
+            image --input /work/image.tar --scanners vuln,secret --skip-db-update --no-progress \
+            --severity CRITICAL --exit-code 1
+
   gitleaks:
     name: Secret scan
     runs-on: ubuntu-24.04

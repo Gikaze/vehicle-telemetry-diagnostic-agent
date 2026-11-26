@@ -1,0 +1,50 @@
+name: Simulator 24 h
+
+# The full fleet day: 100 vans for 24 simulated hours, every message validated against the
+# committed schema and checked for anomalies (make test-24h). Too long for every pull request,
+# where ci.yml runs the same test cut at 09:00 (Simulator fleet run); here it runs weekly and on
+# demand.
+on:
+  schedule:
+    - cron: "0 5 * * 1" # Mondays 05:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A second run on the same ref waits for the first instead of cancelling a day in progress.
+concurrency:
+  group: simulator-24h-${{ github.ref }}
+  cancel-in-progress: false
+
+# Same uv version as ci.yml and the local toolchain (docs/SETUP.md), pinned for NFR-07.
+env:
+  UV_VERSION: "0.12.23"
+
+jobs:
+  fleet-day:
+    name: Simulator 24 h
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Run 100 vans for 24 h, every message validated and checked
+        run: make test-24h SUMMARY=fleet-day-summary.json
+      - name: Add the run summary to the job summary
+        if: always()
+        run: |
+          if [ -s fleet-day-summary.json ]; then
+            {
+              echo "### Simulator 24 h: 100 vans, the whole of day 0"
+              echo '```json'
+              cat fleet-day-summary.json
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### Simulator 24 h: no summary (the run failed or did not run)" >> "$GITHUB_STEP_SUMMARY"
+          fi

@@ -30,7 +30,10 @@ known-first-party = ["simulator"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = ["--strict-markers"]
-markers = ["integration: tests that need a running LocalStack (run with make test-int)"]
+markers = [
+    "integration: tests that need a running LocalStack (run with make test-int)",
+    "slow: the fleet run of tests/slow, minutes to an hour (run with make test-24h)",
+]
 
 [tool.coverage.run]
 source = ["simulator", "pipeline", "agent"]
